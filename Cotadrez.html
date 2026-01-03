@@ -1486,6 +1486,179 @@
             updateInventories();
         }
 
+        // --- SISTEMA DE AMENAZAS (Influence Maps) ---
+
+        // Genera una matriz 10x10 donde cada celda indica cuántas unidades del 'attackingArmy' amenazan esa posición
+        function getThreatMap(attackingArmy) {
+            // 1. Crear matriz vacía de ceros
+            let map = Array(10).fill().map(() => Array(10).fill(0));
+
+            // 2. Recorrer tablero buscando atacantes
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 10; c++) {
+                    const piece = logicBoard[r][c];
+                    if (piece && piece.army === attackingArmy) {
+
+                        // 3. Para cada pieza, verificar qué casillas amenaza
+                        for (let tr = 0; tr < 10; tr++) {
+                            for (let tc = 0; tc < 10; tc++) {
+                                // No se amenaza a sí mismo
+                                if (r === tr && c === tc) continue;
+
+                                // Usamos la función auxiliar de ataque (no de movimiento)
+                                if (canUnitAttack(piece.type, r, c, tr, tc, piece.army)) {
+                                    map[tr][tc]++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return map;
+        }
+
+        // Verifica si una unidad en (r1,c1) podría atacar/capturar en (r2,c2)
+        // Ignoramos qué hay en el destino (asumimos que es el objetivo)
+        function canUnitAttack(type, r1, c1, r2, c2, army) {
+            const dR = Math.abs(r2 - r1);
+            const dC = Math.abs(c2 - c1);
+
+            // 1. REY, LANCEROS, CHUSMA (Rango 1)
+            // Nota: Asumimos que atacan igual que mueven
+            if (type === 'rey') return (dR <= 1 && dC <= 1);
+            if (type === 'lanceros' || type === 'chusma') return (dR + dC === 1);
+
+            // 2. ARQUEROS (Distancia 1 o 2 con salto limpio)
+            if (type === 'arqueros') {
+                if (dR !== dC) return false;
+                if (dR === 1) return true;
+                if (dR === 2) {
+                    const midR = (r1 + r2) / 2, midC = (c1 + c2) / 2;
+                    // Solo atacamos si el hueco intermedio está vacío/agua (sin obstáculos sólidos)
+                    // Nota: logicBoard[mid] debe ser null para que la flecha pase
+                    return (logicBoard[midR][midC] === null && terrain[midR][midC] !== 'water');
+                }
+                return false;
+            }
+
+            // 3. CABALLERÍA LIGERA (Saltos en L diagonal)
+            if (type === 'c_ligera') {
+                if (!((dR === 3 && dC === 1) || (dR === 1 && dC === 3))) return false;
+                // Reutilizamos lógica de bloqueo de isValidMove (simplificada)
+                const isBlocked = (r, c) => {
+                    if (r < 0 || r > 9 || c < 0 || c > 9) return true;
+                    if (terrain[r][c] === 'water') return true;
+                    const o = logicBoard[r][c];
+                    return (o && (o.type === 'montana' || o.type === 'fortaleza'));
+                };
+                // Check Ruta A
+                const shorts = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+                for (let [sr, sc] of shorts) {
+                    const cr = r1 + sr, cc = c1 + sc;
+                    if (Math.abs(r2 - cr) === 2 && Math.abs(c2 - cc) === 2) {
+                        if (!isBlocked(cr, cc) && !isBlocked((cr + r2) / 2, (cc + c2) / 2)) return true;
+                    }
+                }
+                // Check Ruta B
+                const longs = [[2, 2], [2, -2], [-2, 2], [-2, -2]];
+                for (let [lr, lc] of longs) {
+                    const cr = r1 + lr, cc = c1 + lc;
+                    if (Math.abs(r2 - cr) === 1 && Math.abs(c2 - cc) === 1) {
+                        if (!isBlocked((r1 + cr) / 2, (c1 + cc) / 2) && !isBlocked(cr, cc)) return true;
+                    }
+                }
+                return false;
+            }
+
+            // 4. CABALLERÍA PESADA (Saltos en L ortogonal)
+            if (type === 'c_pesada') {
+                if (!((dR === 2 && dC === 1) || (dR === 1 && dC === 2))) return false;
+                // Bloqueo: Montaña, Fortaleza o ENEMIGO (el amigo deja pasar, el enemigo frena)
+                // Pero para "amenazar" el destino, solo nos importa llegar.
+                const isBlocked = (r, c) => {
+                    if (r < 0 || r > 9 || c < 0 || c > 9) return true;
+                    if (terrain[r][c] === 'water') return true;
+                    const o = logicBoard[r][c];
+                    if (o) {
+                        if (o.type === 'montana' || o.type === 'fortaleza') return true;
+                        if (o.army !== army) return true; // Enemigo bloquea el paso intermedio
+                    }
+                    return false;
+                };
+                const sR = Math.sign(r2 - r1), sC = Math.sign(c2 - c1);
+                if (dR === 2) return !(isBlocked(r1 + sR, c1) || isBlocked(r2, c1)) || !(isBlocked(r1, c2) || isBlocked(r1 + sR, c2));
+                else return !(isBlocked(r1, c1 + sC) || isBlocked(r1, c2)) || !(isBlocked(r2, c1) || isBlocked(r2, c1 + sC));
+            }
+
+            // 5. UNIDADES DE RAYCAST (Dragón, Elefante, Armas)
+            // Helper de Raycast
+            const checkRay = (isOrtho, isDiag, canFly, isWeapon) => {
+                if (isOrtho && (r1 !== r2 && c1 !== c2)) return false;
+                if (isDiag && (dR !== dC)) return false;
+
+                const sR = Math.sign(r2 - r1), sC = Math.sign(c2 - c1);
+                let cR = r1 + sR, cC = c1 + sC;
+
+                // Escorpión especial: cuenta enemigos
+                let enemiesInPath = 0;
+                let lastEnemyPos = null;
+
+                while (cR !== r2 || cC !== c2) {
+                    const obs = logicBoard[cR][cC];
+
+                    // -- DRAGÓN --
+                    if (canFly) {
+                        // Solo para ante obstáculos que no sean montaña
+                        if (obs && obs.type !== 'montana') return false;
+                    }
+                    // -- TIERRA --
+                    else {
+                        // Agua bloquea a todos menos armas (que disparan por encima)
+                        if (terrain[cR][cC] === 'water' && !isWeapon) return false;
+
+                        // Obstáculos sólidos bloquean a todos
+                        if (obs) {
+                            if (obs.type === 'montana' || obs.type === 'fortaleza') return false;
+
+                            // Unidades en medio:
+                            if (isWeapon && type === 'escorpion') {
+                                // Escorpión cuenta enemigos para perforar
+                                if (obs.army !== army) { enemiesInPath++; lastEnemyPos = { r: cR, c: cC }; }
+                                else return false; // Aliado bloquea disparo
+                            } else if (isWeapon && type === 'trabuquete') {
+                                // Trabuquete dispara por encima de unidades (no hace nada aquí)
+                            } else {
+                                // Elefante: Se bloquea con cualquier unidad
+                                return false;
+                            }
+                        }
+                    }
+                    cR += sR; cC += sC;
+                }
+
+                // Lógica final de Escorpión
+                if (type === 'escorpion' && enemiesInPath > 0) {
+                    // Si hay 1 enemigo en medio, validamos distancia para el segundo (el objetivo actual)
+                    if (enemiesInPath === 1) {
+                        const dist = Math.abs(r2 - lastEnemyPos.r);
+                        return (dist >= 1 && dist <= 3);
+                    }
+                    return false; // Más de 1 en medio o cálculo fallido
+                }
+
+                return true;
+            };
+
+            if (type === 'dragon') return checkRay(true, true, true, false); // Vuela, Ortho+Diag
+            if (type === 'elefante') return checkRay(true, false, false, false); // Tierra, Ortho
+
+            // -- ARMAS: Solo generan amenaza en su modo de DISPARO --
+            if (type === 'trabuquete') return checkRay(true, false, false, true); // Dispara Ortho
+            if (type === 'escorpion') return checkRay(false, true, false, true); // Dispara Diag
+
+            return false;
+        }
+
     </script>
 </body>
 
