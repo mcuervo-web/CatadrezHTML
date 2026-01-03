@@ -617,7 +617,7 @@ function handleDragStart(e, source, army, type, r = null, c = null) {
                 highlightFortressRing(army);
             }
         }
-        
+
         // 2. Permitir soltar (El navegador bloquea por defecto, hay que prevenirlo)
         // Función auxiliar para limpiar fantasmas previos
         function clearGhosts() {
@@ -669,7 +669,7 @@ function handleDragStart(e, source, army, type, r = null, c = null) {
                     // 2. Validar Ocupación (Solo si la geometría es válida)
                     if (isValid && target) {
                         if (target.army === army) {
-                            if (type !== 'lancero') isValid = false;
+                            if (type !== 'lanceros') isValid = false;
                         }
                         // Enemigo = Captura (Válido)
                     }
@@ -887,7 +887,7 @@ function handleDragStart(e, source, army, type, r = null, c = null) {
                     if (target) {
                         if (target.army === data.army) {
                             // --- ALIADO (LANCERO) ---
-                            if (data.type === 'lancero') {
+                            if (data.type === 'lanceros') {
                                 logicBoard[data.originR][data.originC] = target;
                                 logicBoard[r][c] = { army: data.army, type: data.type };
                                 showNotification("🔄 ¡Maniobra de Lancero!");
@@ -1184,20 +1184,53 @@ function handleDragStart(e, source, army, type, r = null, c = null) {
         }
 
         // Valida SOLO la geometría del movimiento (Tablero -> Tablero)
+
+// Valida SOLO la geometría y el camino del movimiento
         function isValidMove(type, r1, c1, r2, c2) {
             const dR = Math.abs(r2 - r1);
             const dC = Math.abs(c2 - c1);
 
-            // --- REGLAS POR TIPO ---
-
+            // --- 1. REY (1 casilla alrededor) ---
             if (type === 'rey') {
-                // Rey: Máximo 1 casilla en cualquier dirección
                 return (dR <= 1 && dC <= 1) && (dR + dC > 0);
             }
 
-            // ... Aquí añadiremos else if (type === 'caballo') ...
+            // --- 2. LANCERO (Cruz de 1 casilla) ---
+            if (type === 'lanceros') {
+                // Matemáticamente, para mover 1 casilla en cruz:
+                // (0 mov vertical + 1 mov horizontal) = 1
+                // (1 mov vertical + 0 mov horizontal) = 1
+                // Cualquier otra cosa (diagonales o lejos) dará > 1
+                return (dR + dC === 1);
+            }
 
-            // Por defecto (resto de piezas): Movimiento libre (Sandbox)
+            // --- 3. DRAGÓN (Reina Voladora) ---
+            if (type === 'dragon') {
+                // A. Geometría: Ortogonal o Diagonal
+                const isDiagonal = (dR === dC);
+                const isOrthogonal = (r1 === r2 || c1 === c2);
+
+                if (!isDiagonal && !isOrthogonal) return false;
+
+                // B. Detección de obstáculos (Raycasting)
+                const stepR = Math.sign(r2 - r1);
+                const stepC = Math.sign(c2 - c1);
+
+                let currR = r1 + stepR;
+                let currC = c1 + stepC;
+
+                while (currR !== r2 || currC !== c2) {
+                    const obstacle = logicBoard[currR][currC];
+                    // Choca con Unidades y Fortalezas, ignora Montañas
+                    if (obstacle && obstacle.type !== 'montana') return false;
+                    
+                    currR += stepR;
+                    currC += stepC;
+                }
+                return true;
+            }
+
+            // --- RESTO DE PIEZAS (Movimiento libre por ahora) ---
             return true;
         }
 
