@@ -137,6 +137,15 @@
             cursor: help;
         }
 
+        /* Fichas rescatables: Borde brillante o cursor de mano */
+        .rescue-target {
+            cursor: pointer !important;
+            /* box-shadow: 0 0 5px 2px var(--c-gold); */
+            /* Brillo dorado de esperanza */
+            filter: grayscale(0%) opacity(1) !important;
+            /* Se ven vivas */
+        }
+
         /* Items del Inventario (Sin recuadro, icono grande) */
         .inv-item {
             width: 70px;
@@ -890,25 +899,30 @@
             // No llamamos a updateDungeons aquí porque en despliegue no hay capturas
         }
 
-        // Dibuja los prisioneros en las mazmorras (usando IDs grave-rojo y grave-negro)
         function updateDungeons() {
-            ['rojo', 'negro'].forEach(army => {
-                // OJO: En tu HTML los IDs son 'grave-rojo' y 'grave-negro'
-                const container = document.getElementById(`grave-${army}`);
+            ['rojo', 'negro'].forEach(jailerArmy => {
+                // jailerArmy = Quien tiene la llave (Dueño de la mazmorra)
+                const container = document.getElementById(`grave-${jailerArmy}`);
                 if (!container) return;
+                container.innerHTML = '';
 
-                container.innerHTML = ''; // Limpiar
-
-                dungeons[army].forEach(captive => {
+                dungeons[jailerArmy].forEach((captive, index) => {
                     const img = document.createElement('img');
-                    // Usamos el bando original del prisionero para la imagen
                     img.src = getImgUrl(captive.army, captive.type);
                     img.title = `Prisionero: ${captive.type.toUpperCase()}`;
+
+                    // LÓGICA DE RESCATE
+                    // Si estamos jugando, es mi turno, y el prisionero es MÍO
+                    if (gameState === 'playing' && captive.army === turnColor && jailerArmy !== turnColor) {
+                        img.classList.add('rescue-target');
+                        img.onclick = () => attemptRescue(jailerArmy, index, captive);
+                        img.title = "CLICK PARA RESCATAR (Requiere tropas en la fortaleza enemiga)";
+                    }
+
                     container.appendChild(img);
                 });
             });
         }
-
 
         function finishTurnP1() {
             // Acción directa, sin preguntas
@@ -934,6 +948,61 @@
             // Repintar (se quita la niebla)
             renderBoard();
             updateInventories();
+        }
+
+function attemptRescue(jailerArmy, captiveIndex, captive) {
+            // 1. Identificar al enemigo y su fortaleza
+            const myArmy = turnColor;
+            const enemyFortPos = fortressPos[jailerArmy]; // La fortaleza del carcelero
+
+            if (!enemyFortPos) return; // Seguridad
+
+            // 2. Buscar "El Equipo de Rescate"
+            // (Mis piezas que están en el anillo de salida de la fortaleza enemiga)
+            let rescueTeam = [];
+            
+            // Recorremos el tablero buscando mis piezas en zona hostil
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 10; c++) {
+                    const piece = logicBoard[r][c];
+                    if (piece && piece.army === myArmy) {
+                        if (isInExitZone(r, c, enemyFortPos)) {
+                            rescueTeam.push({r, c, type: piece.type});
+                        }
+                    }
+                }
+            }
+
+            // 3. REGLA: ¿Hay equipo de rescate?
+            if (rescueTeam.length < 2) {
+                showNotification("⛔ Necesitas más tropas rodeando la Fortaleza Enemiga para rescatar.", true);
+                return;
+            }
+
+            // 4. EJECUTAR EL RESCATE (Todo vuelve a la reserva)
+            
+            // A. Recuperar al prisionero
+            dungeons[jailerArmy].splice(captiveIndex, 1); // Sacar de mazmorra
+            reserves[myArmy][captive.type]++; // Volver a reserva
+
+            // B. Retirar al equipo de rescate (El coste de la operación)
+            rescueTeam.forEach(soldier => {
+                logicBoard[soldier.r][soldier.c] = null; // Sacar del tablero
+                reserves[myArmy][soldier.type]++; // Volver a reserva
+            });
+
+            // 5. FINALIZAR
+            const msg = `🚁 ¡RESCATE ÉPICO! ${captive.type.toUpperCase()} y ${rescueTeam.length} comandos han regresado a casa.`;
+            
+            // Cambio de turno tras la operación
+            turnColor = (turnColor === 'rojo') ? 'negro' : 'rojo';
+            
+            showNotification(msg);
+            
+            // Actualizar todo
+            renderBoard();
+            updateInventories();
+            updateDungeons();
         }
 
         function getStatusText() {
