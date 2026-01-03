@@ -952,39 +952,35 @@
         };
 
 
-        // --- DICCIONARIO DE TRADUCCIÓN INVERSA ---
+        // --- DICCIONARIO DE TRADUCCIÓN (CORREGIDO Y COMPLETADO) ---
         const MESSAGES = {
             es: {
-                // Estas claves son el TEXTO EXACTO que tienes en tu código ahora
-                "north": "DEL NORTE",
-                "south": "DEL SUR",
-                "turn_generic": "Turno", // Para composiciones
+                // Nombres de Ejércitos (Solemnes)
+                "north": "EJÉRCITO DEL NORTE",
+                "south": "EJÉRCITO DEL SUR",
+                "rojo": "ROJO",
+                "negro": "NEGRO",
+                // Claves compuestas para inicio de partida
+                "DE ROJO": "DEL EJÉRCITO ROJO",
+                "DE NEGRO": "DEL EJÉRCITO NEGRO",
+
+                // Textos Generales
                 "init": "Elige tu destino: Arrastra una Fortaleza para empezar. Mantén el ratón sobre cualquier unidad para Ayuda Visual",
-                "check": "⚠️ ¡JAQUE AL REY! DEBES PROTEGERLO INMEDIATAMENTE. ⚠️", // Simplificado
-                "siege_alert": "🛡️ ¡ALERTA! LA FORTALEZA ESTÁ RODEADA. ROMPE EL CERCO O PERDERÁS TROPAS.",
+                "turn_part": "Turno",
+                "deploy_phase": "Fase Despliegue",
+
+                // Mensajes de Juego
+                "msg_valid": "Movimiento Válido",
+                "msg_invalid": "Movimiento Inválido",
+                "check_label": " (JAQUE ⚠️)",
+                "err_check": " (JAQUE ⚠️)", // <--- FALTABA ESTA
+
+                // Errores y Notas
                 "water": " (AGUA 🌊)",
                 "fortress": " (FORTALEZA 🏰)",
                 "mountain": " (MONTAÑA 🏔️)",
                 "occupied": " (OCUPADO ⛔)",
                 "limits": " (FUERA DE LÍMITES 🚫)",
-                "check_label": " (JAQUE ⚠️)",
-                "err_check": " (JAQUE ⚠️)",
-                "msg_valid": "Movimiento Válido",
-                "msg_invalid": "Movimiento Inválido",
-                "rey": "REY",
-                "chusma": "CHUSMA",
-                "lanceros": "LANCERO",
-                "arqueros": "ARQUERO",
-                "c_ligera": "C. LIGERA",
-                "c_pesada": "C. PESADA",
-                "elefante": "ELEFANTE",
-                "dragon": "DRAGÓN",
-                "trabuquete": "TRABUQUETE",
-                "escorpion": "ESCORPIÓN",
-                "fortaleza": "FORTALEZA",
-                "montana": "MONTAÑA",
-                "rojo": "ROJO",
-                "negro": "NEGRO",
                 "siege_only": "🔒 Solo puedes mover las unidades que asedian la fortaleza.",
                 "deploy_fort": "🚫 Solo despliegue en Fortaleza.",
                 "invalid_cell": "🚫 Casilla inválida.",
@@ -994,6 +990,8 @@
                 "no_water": "⛔ No en el agua.",
                 "zone_occ": "⛔ Zona ocupada.",
                 "illegal": "⛔ Movimiento ilegal",
+                "check_alert": "⚠️ ¡ESTÁS EN JAQUE! Debes salvar al Rey.",
+                "suicide": "⛔ Movimiento inválido: Dejaría al Rey expuesto.",
                 "relay": "🔄 Relevo de Lancero",
                 "ally": "⛔ Casilla aliada.",
                 "shot": "🔥 ¡DISPARO!",
@@ -1007,83 +1005,63 @@
                 "turn_j1": "⚠️ Turno del JUGADOR 1",
                 "turn_j2": "⚠️ Turno del JUGADOR 2",
                 "relocated": "Unidad reubicada",
+                "fort_set": "🏰 Fortaleza establecida.",
+                "elephant_fail": "🐘 ¡IMPOSIBLE! El ataque no es suficiente. Necesitas al menos 2 unidades amenazando al Elefante.",
+
+                // Final de Partida y Fases
                 "mountains_left": "⚠️ Debes colocar todas las MONTAÑAS en el mapa antes de terminar.",
-                "fortress_set": "🏰 Fortaleza establecida.",
+                "mountains_start": "⚠️ Debes colocar todas las MONTAÑAS en el mapa antes de empezar.",
+                "fort_reset": "🏰 Reinicio: Fortaleza retirada. Puedes cambiar de bando.",
+                "fort_soft": "↩️ Fortaleza retirada. (Tus montañas se mantienen).",
+                "fort_retry": "↩️ Fortaleza retirada. Puedes colocarla de nuevo.",
                 "rescue_fail": "⛔ Necesitas más tropas rodeando la Fortaleza Enemiga para rescatar.",
                 "rescue_empty": "🚁 ¡RESCATE ÉPICO! La fortaleza enemiga estaba vacía.",
                 "siege_end": "🔄 Asedio finalizado. Tus tropas regresan a la RESERVA.",
-                "fort_empty_end": "📭 Fortaleza vacía. Fin del asedio.",
-                "fort_remove": "↩️ Fortaleza retirada. Puedes cambiar de bando.",
-                "fort_remove_soft": "↩️ Fortaleza retirada. (Tus montañas se mantienen).",
+                "fort_empty": "📭 Fortaleza vacía. Fin del asedio.",
+                // --- NUEVOS: FIN DE PARTIDA ---
+                "status_win": "👑 VICTORIA DEL EJÉRCITO {army}",
+                "status_draw": "🏁 FIN DE PARTIDA: TABLAS POR REY AHOGADO",
+
+                // Tooltips y Ayuda
                 "click_siege": "CLICK PARA EJECUTAR EL ASEDIO",
                 "click_pass": "Click para CEDER EL TURNO",
                 "click_rescue": "CLICK PARA RESCATAR Y EJECUTAR ASEDIO",
-                "occupied_simple": "⛔ Casilla ocupada",
-                "water_error": "🌊 ¡Al agua no!",
-                "water_simple": "⛔ Agua.",
-                "mountain_simple": "⛔ Montaña.",
-                "fortress_simple": "⛔ Fortaleza.",
-                "fortress_first_short": "⚠️ Primero la FORTALEZA.",
-                "no_fit_here": "¡No cabe aquí!", // Asegúrate de que esta coincida exactamente
-                "⛔ Casilla ocupada": "⛔ Casilla ocupada", // Clave = Valor para que funcione la búsqueda
-                "🌊 ¡Al agua no!": "🌊 ¡Al agua no!",
-                "⛔ Agua.": "⛔ Agua.",
-                "⛔ Montaña.": "⛔ Montaña.",
-                "⛔ Fortaleza.": "⛔ Fortaleza.",
-                "⚠️ Primero la FORTALEZA.": "⚠️ Primero la FORTALEZA.",
-                // --- AÑADIR ESTAS CLAVES PARA TERRITORIOS Y COLORES ---
-                // --- CAMBIO: AÑADIMOS "EJÉRCITO" PARA QUE ENCAJE CON "EL" ---
-                "north": "EJÉRCITO DEL NORTE",
-                "south": "EJÉRCITO DEL SUR",
-
-                // Colores simples (para cuando no llevan "del")
-                "rojo": "ROJO",
-                "negro": "NEGRO",
-
-                // Claves compuestas (para el traductor automático de "Turno DE ROJO")
-                "DE ROJO": "DEL EJÉRCITO ROJO",
-                "DE NEGRO": "DEL EJÉRCITO NEGRO",
-
-                // Fases y Turnos
-                "turn_part": "Turno",
-                "deploy_phase": "Fase Despliegue",
                 "help_visualizing": "💡 Visualizando {count} movimientos posibles...",
-                "help_blocked": "🚫 {unit}: SIN MOVIMIENTOS POSIBLES (BLOQUEADA)", // Ojo a la coma final si añades más cosas luego
-                "fort_set": "🏰 Fortaleza establecida.",
-                "status_gameover": "🏁 FIN DE PARTIDA: {reason}. {winner}",
-                "status_win": "👑 VICTORIA DEL EJÉRCITO {army}",
-                "status_draw": "🏁 FIN DE PARTIDA: TABLAS POR REY AHOGADO",
+                "help_blocked": "🚫 {unit}: SIN MOVIMIENTOS POSIBLES (BLOQUEADA)",
+
+                // Unidades y Colores (Diccionario Inverso)
+                "rey": "REY", "chusma": "CHUSMA", "lanceros": "LANCERO", "arqueros": "ARQUERO",
+                "c_ligera": "C. LIGERA", "c_pesada": "C. PESADA", "elefante": "ELEFANTE",
+                "dragon": "DRAGÓN", "trabuquete": "TRABUQUETE", "escorpion": "ESCORPIÓN",
+                "fortaleza": "FORTALEZA", "montana": "MONTAÑA"
             },
             en: {
-                "north": "NORTH",
-                "south": "SOUTH",
-                "turn_generic": "Turn",
+                // Army Names (Formal)
+                "north": "NORTHERN ARMY",
+                "south": "SOUTHERN ARMY",
+                "rojo": "RED",
+                "negro": "BLACK",
+                // Composite keys for game start
+                "DE ROJO": "RED ARMY",
+                "DE NEGRO": "BLACK ARMY",
+
+                // General Text
                 "init": "Choose your destiny: Drag a Fortress to start. Hover for Visual Aid.",
-                "check": "⚠️ KING IN CHECK! PROTECT HIM IMMEDIATELY. ⚠️",
-                "siege_alert": "🛡️ ALERT! FORTRESS SURROUNDED. BREAK SIEGE OR LOSE TROOPS.",
+                "turn_part": "Turn",
+                "deploy_phase": "Deployment Phase",
+
+                // Game Messages
+                "msg_valid": "Valid Move",
+                "msg_invalid": "Invalid Move",
+                "check_label": " (CHECK ⚠️)",
+                "err_check": " (CHECK ⚠️)", // <--- MISSING
+
+                // Errors & Notes
                 "water": " (WATER 🌊)",
                 "fortress": " (FORTRESS 🏰)",
                 "mountain": " (MOUNTAIN 🏔️)",
                 "occupied": " (OCCUPIED ⛔)",
                 "limits": " (OUT OF BOUNDS 🚫)",
-                "check_label": " (CHECK ⚠️)",
-                "err_check": " (CHECK ⚠️)",
-                "msg_valid": "Valid Move",
-                "msg_invalid": "Invalid Move",
-                "rey": "KING",
-                "chusma": "RABBLE",
-                "lanceros": "LANCER",
-                "arqueros": "ARCHER",
-                "c_ligera": "LT. CAVALRY",
-                "c_pesada": "HVY. CAVALRY",
-                "elefante": "ELEPHANT",
-                "dragon": "DRAGON",
-                "trabuquete": "TREBUCHET",
-                "escorpion": "SCORPION",
-                "fortaleza": "FORTRESS",
-                "montana": "MOUNTAIN",
-                "rojo": "RED",
-                "negro": "BLACK",
                 "siege_only": "🔒 You can only move units besieging the fortress.",
                 "deploy_fort": "🚫 Deployment only at Fortress.",
                 "invalid_cell": "🚫 Invalid tile.",
@@ -1093,6 +1071,8 @@
                 "no_water": "⛔ Not on water.",
                 "zone_occ": "⛔ Zone occupied.",
                 "illegal": "⛔ Illegal move",
+                "check_alert": "⚠️ YOU ARE IN CHECK! You must save the King.",
+                "suicide": "⛔ Invalid move: King would be exposed.",
                 "relay": "🔄 Lancer Relay",
                 "ally": "⛔ Ally tile.",
                 "shot": "🔥 SHOT!",
@@ -1106,47 +1086,36 @@
                 "turn_j1": "⚠️ PLAYER 1 Turn",
                 "turn_j2": "⚠️ PLAYER 2 Turn",
                 "relocated": "Unit relocated",
+                "fort_set": "🏰 Fortress established.",
+                "elephant_fail": "🐘 IMPOSSIBLE! Attack insufficient. Need 2+ units threatening the Elephant.",
+
+                // Game End & Phases
                 "mountains_left": "⚠️ You must place all MOUNTAINS before finishing.",
-                "fortress_set": "🏰 Fortress established.",
+                "mountains_start": "⚠️ You must place all MOUNTAINS before starting.",
+                "fort_reset": "🏰 Reset: Fortress removed. You can switch sides.",
+                "fort_soft": "↩️ Fortress removed. (Your mountains remain).",
+                "fort_retry": "↩️ Fortress removed. You can place it again.",
                 "rescue_fail": "⛔ Need more troops surrounding Enemy Fortress.",
                 "rescue_empty": "🚁 EPIC RESCUE! The enemy fortress was empty.",
                 "siege_end": "🔄 Siege ended. Troops return to RESERVE.",
-                "fort_empty_end": "📭 Fortress empty. Siege over.",
-                "fort_remove": "↩️ Fortress removed. You can switch sides.",
-                "fort_remove_soft": "↩️ Fortress removed. (Your mountains remain).",
+                "fort_empty": "📭 Fortress empty. Siege over.",
+                // --- NEW: GAME END ---
+                "status_win": "👑 VICTORY FOR {army} ARMY",
+                "status_draw": "🏁 GAME OVER: DRAW (STALEMATE)",
+
+                // Tooltips & Help
                 "click_siege": "CLICK TO EXECUTE SIEGE",
                 "click_pass": "CLICK TO PASS TURN",
                 "click_rescue": "CLICK TO RESCUE AND EXECUTE SIEGE",
-                "occupied_simple": "⛔ Tile occupied",
-                "water_error": "🌊 Not on water!",
-                "water_simple": "⛔ Water.",
-                "mountain_simple": "⛔ Mountain.",
-                "fortress_simple": "⛔ Fortress.",
-                "fortress_first_short": "⚠️ FORTRESS first.",
-                "no_fit_here": "It doesn't fit here!",
-                "⛔ Casilla ocupada": "⛔ Tile occupied",
-                "🌊 ¡Al agua no!": "🌊 Not on water!",
-                "⛔ Agua.": "⛔ Water.",
-                "⛔ Montaña.": "⛔ Mountain.",
-                "⛔ Fortaleza.": "⛔ Fortress.",
-                "⚠️ Primero la FORTALEZA.": "⚠️ FORTRESS first.",
-                // --- CAMBIO: ENGLISH EQUIVALENTS ---
-                "north": "NORTHERN ARMY",
-                "south": "SOUTHERN ARMY",
-
-                "rojo": "RED",
-                "negro": "BLACK",
-
-                "DE ROJO": "RED ARMY",
-                "DE NEGRO": "BLACK ARMY",
-
-                "turn_part": "Turn",
-                "deploy_phase": "Deployment Phase",
+                // (CLEANED UP DUPLICATE HERE)
                 "help_visualizing": "💡 Visualizing {count} possible moves...",
                 "help_blocked": "🚫 {unit}: NO MOVES POSSIBLE (BLOCKED)",
-                "status_gameover": "🏁 GAME OVER: {reason}. {winner}",
-                "status_win": "👑 VICTORY FOR {army} ARMY",
-                "status_draw": "🏁 GAME OVER: DRAW (STALEMATE)",
+
+                // Units & Colors (Reverse Dictionary)
+                "rey": "KING", "chusma": "RABBLE", "lanceros": "LANCER", "arqueros": "ARCHER",
+                "c_ligera": "LT. CAVALRY", "c_pesada": "HVY. CAVALRY", "elefante": "ELEPHANT",
+                "dragon": "DRAGON", "trabuquete": "TREBUCHET", "escorpion": "SCORPION",
+                "fortaleza": "FORTRESS", "montana": "MOUNTAIN"
             }
         };
 
@@ -1181,12 +1150,12 @@
         function handleUnitHover(type, army, r, c) {
             if (draggingMeta) return;
 
-            // --- NUEVO: Si la partida terminó, no mostramos ayudas que tapen la victoria ---
+            // --- CORRECCIÓN: BLOQUEO DE FIN DE PARTIDA ---
+            // Si la partida ha terminado, no mostramos ayuda para no tapar el resultado.
             if (gameState === 'game-over') return;
+            // --------------------------------------------
 
             // 1. Timer de Texto (1 segundo) - Info en barra superior
-            // QUITAMOS el bloqueo "isCritical": Ahora siempre podrás leer qué hace tu pieza.
-            // Al quitar el ratón, el mensaje de JAQUE volverá solo.
             if (hoverTimer) clearTimeout(hoverTimer);
 
             hoverTimer = setTimeout(() => {
@@ -2205,9 +2174,9 @@
                     if (isFortress) {
                         fortressPos[data.army] = { r: r, c: c };
 
-                        // --- CORRECCIÓN AQUÍ ---
+                        // --- CORRECCIÓN DE TRADUCCIÓN ---
                         if (gameState === 'deploy-p1') {
-                            // Traducimos color y territorio antes de mostrarlos
+                            // Traducimos el color y el territorio antes de usarlos
                             const colorName = t(p1Color).toUpperCase();
                             const zoneName = t(p1Territory).toUpperCase();
 
@@ -2215,9 +2184,8 @@
                                 ? `P1: ${colorName} controls the ${zoneName}.`
                                 : `J1: ${colorName} controla el ${zoneName}.`;
                             showNotification(msg);
-                        }
-                        else {
-                            showNotification(t("fort_set"));
+                        } else {
+                            showNotification(t("fort_set")); // "Fortaleza establecida"
                         }
 
                     } else {
@@ -3200,17 +3168,28 @@
             }
         }
 
-        // Helper para terminar partida (si no la tenías ya de mis intentos anteriores)
         function finishGame(winnerArmy, reason = "") {
             gameState = 'game-over';
+            const bar = document.getElementById('status-bar');
 
-            // Guardamos los datos reales, no el texto
-            gameOverData = {
-                winner: winnerArmy,
-                reason: reason
-            };
+            let finalText = "";
+            if (winnerArmy) {
+                // --- CORRECCIÓN: Usar traducción para Victoria ---
+                // 1. Traducimos el nombre del ejército ganador
+                const armyName = t(winnerArmy).toUpperCase();
+                // 2. Construimos la frase de victoria
+                const winPhrase = t('status_win', { army: armyName });
 
-            updateStatusBar(); // La barra se encarga del resto
+                bar.innerText = `${winPhrase}. (${reason})`;
+            } else {
+                // --- CORRECCIÓN: Usar traducción para Tablas ---
+                bar.innerText = t('status_draw');
+            }
+
+            bar.style.color = winnerArmy ? '#2ecc71' : '#fff';
+            bar.classList.remove('status-critical');
+            bar.style.fontWeight = 'bold';
+            bar.style.opacity = 1;
         }
 
         // Actualiza la barra de estado gestionando prioridades y colores
@@ -3309,15 +3288,16 @@
 
             // 1. Si aún no hay territorios definidos (Inicio de partida)
             if (!p1Territory) {
-                // Devolvemos la clave compuesta "DE ROJO" o "DE NEGRO"
-                // para que autoTranslate la convierta a "RED" o "BLACK" en inglés.
-                return `DE ${t(armyColor).toUpperCase()}`;
+                // CORRECCIÓN: Usamos la clave compuesta para que se traduzca entera.
+                // Ej: "DE ROJO" -> "DEL EJÉRCITO ROJO" (ES) / "RED ARMY" (EN)
+                const key = `DE ${armyColor.toUpperCase()}`;
+                return t(key);
             }
 
             const isP1 = (armyColor === p1Color);
             const isNorth = isP1 ? (p1Territory === 'north') : (p1Territory === 'south');
 
-            // 2. Usamos t() para obtener "DEL NORTE" o "NORTH" directamente del diccionario
+            // 2. Devolvemos el nombre del territorio traducido
             return isNorth ? t('north') : t('south');
         }
 
