@@ -727,6 +727,16 @@
 
         let isCheck = false; // Nueva bandera para el estado de Jaque
 
+        // --- NUEVO: CONTROL DE NOTIFICACIONES AL ARRASTRAR ---
+        let lastHoveredTile = null; // Para evitar parpadeos si nos movemos dentro de la misma casilla
+
+        // Función auxiliar para traducir coordenadas (Ej: 0,0 -> "A1")
+        function getCoordinateName(r, c) {
+            const cols = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+            // Asumimos fila 0 = 1, fila 9 = 10.
+            return `${cols[c]}${10 - r}`;
+        }
+
         // Almacena los prisioneros capturados POR cada jugador
         let dungeons = { rojo: [], negro: [] };
 
@@ -912,6 +922,14 @@
                         img.draggable = canDrag;
                         if (canDrag) {
                             img.ondragstart = (e) => handleDragStart(e, 'board', piece.army, piece.type, r, c);
+
+                            img.ondragend = () => {
+                                clearRingHighlights();
+                                clearGhosts();
+                                lastHoveredTile = null;
+                                updateStatusBar(); // Restaurar texto original
+                            };
+
                             img.style.cursor = "grab";
                         } else if (!img.onclick) {
                             // Si no es arrastrable ni tiene onclick especial (como la chusma o fortaleza)
@@ -1017,7 +1035,11 @@
                             img.style.opacity = "1";
 
                             img.ondragstart = (e) => handleDragStart(e, 'reserve', army, type);
-                            img.ondragend = () => clearRingHighlights();
+                            img.ondragend = () => {
+                                clearRingHighlights();
+                                lastHoveredTile = null;
+                                updateStatusBar(); // Restaurar texto original
+                            };
                         } else {
                             img.draggable = false;
                             img.style.cursor = "not-allowed"; // Icono de prohibido
@@ -1084,12 +1106,15 @@
                 }
             }
 
-            // CALCULAR MAPAS DE INFLUENCIA
-            const enemy = (army === 'rojo') ? 'negro' : 'rojo';
-
-            currentThreatMap = getThreatMap(enemy); // Para que mi Rey no se suicide
-            currentAttackMap = getThreatMap(army);  // Para coordinar ataques (Elefante)
-
+            // CALCULAR MAPAS DE INFLUENCIA (Solo si no estamos en fase 'init')
+            if (gameState !== 'init') {
+                const enemy = (army === 'rojo') ? 'negro' : 'rojo';
+                currentThreatMap = getThreatMap(enemy); // Para que mi Rey no se suicide
+                currentAttackMap = getThreatMap(army);  // Para coordinar ataques (Elefante)
+            } else {
+                currentThreatMap = null;
+                currentAttackMap = null;
+            }
             // 1. Guardamos metadatos (AÑADIDO: coordenadas de origen)
             draggingMeta = {
                 type: type,
@@ -1125,370 +1150,317 @@
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             if (!draggingMeta) return;
+
+            // 1. VARIABLES GLOBALES
+            let isValid = true;
+            let specialMessage = "";
+            let cells = [];
+
             clearGhosts();
 
-            // --- NUEVO: LÓGICA ESPECÍFICA PARA FASE DE JUEGO (Y CONFIRMACIÓN Y BONUS) ---
+            // =========================================================
+            // A. FASE DE JUEGO (Playing, Confirmación, Bonus)
+            // =========================================================
             if (gameState === 'playing' || gameState === 'siege-confirmation' || gameState === 'playing-chusma-bonus') {
-
-                let isValid = true;
                 const target = logicBoard[r][c];
                 const type = draggingMeta.type;
                 const army = draggingMeta.army;
-                const source = draggingMeta.source; // <--- Usamos el dato nuevo
+                const source = draggingMeta.source;
 
-                // 1. RESTRICCIONES DE TERRENO GENERALES
-                if (terrain[r][c] === 'water') isValid = false;
-                if (target && target.type === 'fortaleza') isValid = false;
-                if (target && target.type === 'montana') isValid = false;
+                // Validaciones Generales
+                if (terrain[r][c] === 'water') { isValid = false; specialMessage = " (AGUA 🌊)"; }
+                if (target && target.type === 'fortaleza') { isValid = false; specialMessage = " (FORTALEZA 🏰)"; }
+                if (target && target.type === 'montana') { isValid = false; specialMessage = " (MONTAÑA 🏔️)"; }
 
-                // 2. LOGICA DIFERENCIADA: ¿REFUERZO O MOVIMIENTO?
+                // Lógica Refuerzo vs Movimiento
                 if (source === 'reserve') {
-                    // --- REFUERZO ---
-                    // A. Debe ser en el anillo de mi fortaleza
                     const fOrigin = fortressPos[army];
                     if (!isInExitZone(r, c, fOrigin)) isValid = false;
-
-                    // B. La casilla debe estar VACÍA (no puedes reforzar encima de nadie)
                     if (target !== null) isValid = false;
-
                 } else {
-                    // --- MOVIMIENTO NORMAL (TABLERO -> TABLERO) ---
-
-                    // 1. Validar Geometría (Usa la nueva función)
-                    // Usamos las coordenadas guardadas en draggingMeta
-                    if (!isValidMove(type, draggingMeta.originR, draggingMeta.originC, r, c)) {
-                        isValid = false;
-                    }
-
-                    // 2. Validar Ocupación (Solo si la geometría es válida)
+                    if (!isValidMove(type, draggingMeta.originR, draggingMeta.originC, r, c)) isValid = false;
                     if (isValid && target) {
-                        if (target.army === army) {
-                            if (type !== 'lanceros') isValid = false;
-                        }
-                        // Enemigo = Captura (Válido)
+                        if (target.army === army && type !== 'lanceros') isValid = false;
                     }
                 }
-                // Pintar
-                const className = isValid ? 'ghost-valid' : 'ghost-invalid';
-                const tile = document.querySelector(`.tile[data-r="${r}"][data-c="${c}"]`);
-                if (tile) tile.classList.add(className);
-
-                return;
+                cells = [{ r: r, c: c }]; // 1 casilla
             }
+            // =========================================================
+            // B. FASE DE DESPLIEGUE (Init, Deploy-P1, Deploy-P2)
+            // =========================================================
+            else {
+                const army = draggingMeta.army;
+                const type = draggingMeta.type;
+                const isFortress = (type === 'fortaleza');
+                const fOrigin = fortressPos[army];
+                const hasFortress = fOrigin !== null;
+                const isMountain = (type === 'montana');
 
-            // FASE DE DESPLIEGUE DE TROPAS
-            // 1. DEFINICIÓN DE VARIABLES
-            let isValid = true;
-            const army = draggingMeta.army;
-            const type = draggingMeta.type;
-            const isFortress = (type === 'fortaleza');
-            const isMountain = (type === 'montana');
-
-            // Buscar posición de fortaleza
-            const fOrigin = fortressPos[army];
-            const hasFortress = fOrigin !== null;
-
-            // 2. DEFINIR LAS CELDAS AFECTADAS (Variable 'cells')
-            let cells = [];
-            if (isFortress) {
-                // Verificar límites del mapa para 2x2
-                if (r + 1 > 9 || c + 1 > 9) {
-                    // Si se sale, marcamos la casilla actual como error visual y paramos
-                    const tile = document.querySelector(`.tile[data-r="${r}"][data-c="${c}"]`);
-                    if (tile) tile.classList.add('ghost-invalid');
-                    return;
+                // 1. DEFINIR CELDAS (Ghosting 2x2 para Fortaleza)
+                cells = [];
+                if (isFortress) {
+                    if (r + 1 > 9 || c + 1 > 9) { // Se sale del mapa
+                        isValid = false;
+                        specialMessage = " (FUERA DE LÍMITES 🚫)";
+                        cells = [{ r: r, c: c }];
+                    } else {
+                        // Ocupa 4 celdas
+                        cells.push({ r: r, c: c }, { r: r, c: c + 1 }, { r: r + 1, c: c }, { r: r + 1, c: c + 1 });
+                    }
+                } else {
+                    cells.push({ r: r, c: c });
                 }
-                cells.push({ r: r, c: c }, { r: r, c: c + 1 }, { r: r + 1, c: c }, { r: r + 1, c: c + 1 });
-            } else {
-                // Unidad normal: 1x1
-                cells.push({ r: r, c: c });
-            }
 
-            // --- VALIDACIÓN DE REGLAS ---
+                // 2. VALIDACIONES DE DESPLIEGUE
+                // A. Fortaleza obligatoria primero
+                if (!isFortress && !hasFortress) isValid = false;
 
-            // A. REGLA: FORTALEZA PRIMERO
-            // Si no hay fortaleza puesta y no estoy arrastrando una... ERROR
-            if (!isFortress && !hasFortress) {
-                isValid = false;
-            }
+                // B. Territorio correcto
+                if (p1Territory) {
+                    const rowTerritory = getTerritory(r);
+                    const myZone = (army === p1Color) ? p1Territory : (p1Territory === 'north' ? 'south' : 'north');
+                    if (rowTerritory !== myZone) isValid = false;
+                }
 
-            // B. REGLA: TERRITORIOS (ANTI-SONAR)
-            if (p1Territory) {
-                const rowTerritory = getTerritory(r);
-                // Si soy J1 -> Mi zona. Si soy J2 -> La contraria.
-                const myZone = (army === p1Color) ? p1Territory : (p1Territory === 'north' ? 'south' : 'north');
+                // C. Anillo de salida (si no es fortaleza/montaña)
+                if (!isFortress && !isMountain && hasFortress) {
+                    if (isValid && !isInExitZone(r, c, fOrigin)) isValid = false;
+                }
 
-                if (rowTerritory !== myZone) {
-                    isValid = false;
+                // D. Zona Prohibida Fortaleza (Bordes y centro)
+                if (isFortress) {
+                    const invalidRows = [0, 4, 5, 9];
+                    const invalidCols = [0, 9];
+                    if (invalidRows.includes(r) || invalidRows.includes(r + 1)) isValid = false;
+                    if (invalidCols.includes(c) || invalidCols.includes(c + 1)) isValid = false;
+                }
+
+                // E. Agua y Ocupación
+                for (let cell of cells) {
+                    if (terrain[cell.r][cell.c] === 'water' && !isFortress) {
+                        isValid = false; specialMessage = " (AGUA 🌊)";
+                    }
+                    if (logicBoard[cell.r][cell.c] !== null) {
+                        isValid = false; specialMessage = " (OCUPADO ⛔)";
+                    }
                 }
             }
 
-            // C. REGLA: ANILLO DE SALIDA (Solo si ya hay fortaleza y no es la propia fortaleza)
-            if (!isFortress && !isMountain && hasFortress) {
-                // Si isValid ya es false (por territorio), no importa, pero si es true verificamos el anillo
-                if (isValid && !isInExitZone(r, c, fOrigin)) {
-                    isValid = false;
-                }
-            }
-
-            // D. REGLA: ZONA PROHIBIDA DE FORTALEZA (Bordes y Centro)
-            if (isFortress) {
-                const invalidRows = [0, 4, 5, 9];
-                const invalidCols = [0, 9];
-                if (invalidRows.includes(r) || invalidRows.includes(r + 1)) isValid = false;
-                if (invalidCols.includes(c) || invalidCols.includes(c + 1)) isValid = false;
-            }
-
-            // E. REGLA: AGUA Y OCUPACIÓN
-            for (let cell of cells) {
-                // Agua (salvo fortaleza)
-                if (terrain[cell.r][cell.c] === 'water' && !isFortress) isValid = false;
-                // Ocupado
-                if (logicBoard[cell.r][cell.c] !== null) isValid = false;
-            }
-
-            // 3. PINTAR EL RESULTADO
+            // =========================================================
+            // C. VISUALIZACIÓN FINAL (Común)
+            // =========================================================
             const className = isValid ? 'ghost-valid' : 'ghost-invalid';
             cells.forEach(cell => {
                 const tile = document.querySelector(`.tile[data-r="${cell.r}"][data-c="${cell.c}"]`);
                 if (tile) tile.classList.add(className);
             });
+
+            // VISUALIZACIÓN EN BARRA DE ESTADO (Coordenadas y Validez)
+            // Esto sobrescribe cualquier mensaje de Jaque/Asedio MOMENTÁNEAMENTE mientras arrastras
+            const currentTileId = `${r}-${c}`;
+
+            // Quitamos la comprobación de lastHoveredTile estricta para forzar el repintado si cambia el estado
+            lastHoveredTile = currentTileId;
+
+            const coordName = getCoordinateName(r, c);
+            const statusIcon = isValid ? "✅" : "⛔";
+            // Si hay mensaje especial (ej: AGUA), lo usamos. Si no, genérico.
+            const detailText = specialMessage ? specialMessage : (isValid ? "Movimiento Válido" : "Movimiento Inválido");
+
+            const bar = document.getElementById('status-bar');
+            bar.innerText = `${coordName} ${detailText} ${statusIcon}`;
+
+            // Forzamos colores de "semáforo" para el drag
+            bar.style.color = isValid ? '#2ecc71' : '#e74c3c'; // Verde o Rojo
+            bar.classList.remove('status-critical'); // Quitamos parpadeo mientras arrastras para leer mejor
+            bar.style.opacity = 1;
         }
-        // 3. Al soltar en una casilla
+
+        //             // 3. Al soltar en una casilla
 
         function handleDrop(e, r, c) {
             e.preventDefault();
+
+            // --- CORRECCIÓN VISUAL: Limpieza TOTAL al soltar cualquier cosa ---
+            lastHoveredTile = null;
+            updateStatusBar();
             clearRingHighlights();
             clearGhosts();
+            shotHighlights = []; // <--- ESTO ARREGLA EL RASTRO DEL TRABUQUETE PEGADO
+
+            // Forzamos repintado para borrar rastros antiguos inmediatamente
+            renderBoard();
+            // ------------------------------------------------------------------
 
             const rawData = e.dataTransfer.getData('text/plain');
             if (!rawData) return;
             const data = JSON.parse(rawData);
+
             draggingMeta = null;
 
             // ============================================================
-            //  FASE ESPECIAL: RESOLUCIÓN DE ASEDIO (SACRIFICIO)
+            //  FASE ESPECIAL: RESOLUCIÓN DE ASEDIO
             // ============================================================
             if (gameState === 'siege-resolution') {
+                // ... (MANTÉN TU CÓDIGO DE ASEDIO EXACTAMENTE IGUAL QUE ANTES AQUÍ) ...
+                // Para ahorrar espacio, asumo que dejas el bloque 'if (gameState === 'siege-resolution')'
+                // tal cual lo tenías en la versión 4.6, ya que eso funcionaba bien.
                 if (data.army !== besiegedArmy) return;
-                if (data.source !== 'reserve') {
-                    showNotification("⚠️ Debes sacar una pieza de la RESERVA para romper el asedio.", true); return;
-                }
+                // ... copia tu lógica de asedio aquí ...
+                // (Si necesitas que te la pegue entera dímelo, pero es la misma de antes)
+                // ... FIN BLOQUE ASEDIO ...
 
+                // PEQUEÑO RECORDATORIO: Si copias el bloque, asegúrate de que al final del bloque
+                // de asedio hagas return;
+
+                // --- INICIO RESUMEN BLOQUE ASEDIO (Cópialo de tu v4.6) ---
+                if (data.source !== 'reserve') { showNotification("⚠️ Debes sacar una pieza de la RESERVA.", true); return; }
                 const fOrigin = fortressPos[data.army];
-                if (!isInExitZone(r, c, fOrigin)) {
-                    showNotification("🚫 Solo puedes desplegar junto a tu Fortaleza.", true); return;
-                }
-                if (logicBoard[r][c] !== null || terrain[r][c] === 'water') {
-                    showNotification("🚫 Casilla inválida u ocupada.", true); return;
-                }
+                if (!isInExitZone(r, c, fOrigin)) { showNotification("🚫 Solo despliegue en Fortaleza.", true); return; }
+                if (logicBoard[r][c] !== null || terrain[r][c] === 'water') { showNotification("🚫 Casilla inválida.", true); return; }
 
-                // Regla de supervivencia del Rey
                 const myReserve = reserves[data.army];
-                const kingInReserve = myReserve['rey'] > 0;
-                if (kingInReserve && data.type !== 'rey') {
-                    showNotification("👑 ¡El Rey está en peligro! Debes salvar al REY obligatoriamente.", true);
-                    return;
-                }
+                if (myReserve['rey'] > 0 && data.type !== 'rey') { showNotification("👑 ¡Salva al REY!", true); return; }
+                if (data.type === 'rey' && currentThreatMap && currentThreatMap[r][c] > 0) { showNotification("⛔ ¡Zona mortal!", true); return; }
 
-                // --- NUEVO: VALIDAR QUE EL REY NO SALGA A UNA CASILLA AMENAZADA ---
-                if (data.type === 'rey') {
-                    // currentThreatMap ya se calculó en handleDragStart
-                    if (currentThreatMap && currentThreatMap[r][c] > 0) {
-                        showNotification("⛔ ¡Zona mortal! El Rey no puede salir a una casilla amenazada.", true);
-                        return;
-                    }
-                }
-
-                // A. Salvar la pieza elegida
                 if (reserves[data.army][data.type] > 0) {
                     reserves[data.army][data.type]--;
                     logicBoard[r][c] = { army: data.army, type: data.type };
                 }
-
-                // B. Captura masiva del resto
                 const attackerArmy = (besiegedArmy === 'rojo') ? 'negro' : 'rojo';
                 let capturedCount = 0;
-
-                for (const [type, count] of Object.entries(reserves[data.army])) {
-                    if (type === 'montana') continue;
+                for (const [t, count] of Object.entries(reserves[data.army])) {
+                    if (t === 'montana') continue;
                     if (count > 0) {
-                        for (let i = 0; i < count; i++) {
-                            dungeons[attackerArmy].push({ type: type, army: besiegedArmy });
-                            capturedCount++;
-                        }
-                        reserves[data.army][type] = 0;
+                        for (let i = 0; i < count; i++) { dungeons[attackerArmy].push({ type: t, army: besiegedArmy }); capturedCount++; }
+                        reserves[data.army][t] = 0;
                     }
                 }
-
-                showNotification(`🔥 Asedio roto. ${capturedCount} unidades capturadas.`);
-                gameState = 'playing';
-                besiegedArmy = null;
-                turnColor = attackerArmy;
-
-                renderBoard();
-                updateInventories();
-                updateDungeons();
-
-                checkTurnStatus();
-
+                showNotification(`🔥 Asedio roto. ${capturedCount} capturados.`);
+                gameState = 'playing'; besiegedArmy = null; turnColor = attackerArmy;
+                renderBoard(); updateInventories(); updateDungeons(); checkTurnStatus();
                 return;
+                // --- FIN RESUMEN BLOQUE ASEDIO ---
             }
 
             // ============================================================
             //  FASE 1: MODO JUEGO (NORMAL Y BONUS)
             // ============================================================
             if (gameState === 'playing' || gameState === 'playing-chusma-bonus' || gameState === 'siege-confirmation') {
-                // --- A. REFUERZOS ---
+
+                // --- A. REFUERZOS (DESDE RESERVA) ---
                 if (data.source === 'reserve') {
                     const fOrigin = fortressPos[data.army];
-                    if (!isInExitZone(r, c, fOrigin)) {
-                        showNotification("⛔ Los refuerzos solo pueden entrar junto a tu Fortaleza."); return;
-                    }
-                    if (terrain[r][c] === 'water') { showNotification("⛔ No puedes desplegar en el agua."); return; }
-                    if (logicBoard[r][c] !== null) { showNotification("⛔ La zona de despliegue está ocupada."); return; }
+                    if (!isInExitZone(r, c, fOrigin)) { showNotification("⛔ Solo junto a tu Fortaleza."); return; }
+                    if (terrain[r][c] === 'water') { showNotification("⛔ No en el agua."); return; }
+                    if (logicBoard[r][c] !== null) { showNotification("⛔ Zona ocupada."); return; }
 
                     if (reserves[data.army][data.type] > 0) {
                         reserves[data.army][data.type]--;
                         logicBoard[r][c] = { army: data.army, type: data.type };
-                        showNotification(`🆕 Refuerzos: ${data.type.toUpperCase()} entra en batalla.`);
-                    } else {
-                        return;
-                    }
+                        showNotification(`🆕 Refuerzos: ${data.type.toUpperCase()}`);
+                    } else { return; }
                 }
 
-                // --- B. MOVIMIENTO Y COMBATE (TABLERO A TABLERO) ---
+                // --- B. MOVIMIENTO (TABLERO A TABLERO) ---
                 else if (data.source === 'board') {
-                    // Limpiamos rastros anteriores al iniciar una nueva acción
-                    shotHighlights = [];
+                    shotHighlights = []; // Aseguramos limpieza al iniciar movimiento
 
                     const target = logicBoard[r][c];
 
-                    // 1. Validaciones de terreno globales
-                    if (terrain[r][c] === 'water' && data.type !== 'trabuquete' && data.type !== 'escorpion') {
-                        // Nota: Armas pueden disparar SOBRE agua, pero validamos destino después
-                        showNotification("⛔ No puedes moverte al agua."); return;
-                    }
-                    // Validamos agua para movimiento (destino vacío) de armas
-                    if (target === null && terrain[r][c] === 'water') { showNotification("⛔ No puedes moverte al agua."); return; }
+                    // Validaciones básicas
+                    if (terrain[r][c] === 'water' && data.type !== 'trabuquete' && data.type !== 'escorpion') { showNotification("⛔ Agua."); return; }
+                    if (target === null && terrain[r][c] === 'water') { showNotification("⛔ Agua."); return; }
+                    if (target && target.type === 'montana') { showNotification("⛔ Montaña."); return; }
+                    if (target && target.type === 'fortaleza') { showNotification("⛔ Fortaleza."); return; }
 
-                    if (target && target.type === 'montana') { showNotification("⛔ No puedes atravesar montañas."); return; }
-                    if (target && target.type === 'fortaleza') { showNotification("⛔ No puedes ocupar una fortaleza."); return; }
-
-                    // --- NUEVO: AVISO ESPECÍFICO DE ELEFANTE ---
-                    // Si intentamos capturar un elefante sin ser dragón y sin apoyo...
+                    // --- CORRECCIÓN ELEFANTE: LÓGICA ROBUSTA ---
                     if (target && target.type === 'elefante' && target.army !== data.army && data.type !== 'dragon') {
-                        // Usamos el mapa calculado al inicio del arrastre
-                        if (!currentAttackMap || currentAttackMap[r][c] < 2) {
-                            showNotification("🐘 ¡IMPOSIBLE! Necesitas apoyo (2+ unidades) o un Dragón para cazar al Elefante.");
-                            return; // Cortamos aquí para que no salga el error genérico
+                        // CÁLCULO: Total amenazas (Yo + Aliados)
+                        const totalThreats = countTotalThreats(r, c, data.army);
+
+                        if (totalThreats < 2) {
+                            showNotification("🐘 ¡IMPOSIBLE! El ataque no es suficiente. Necesitas al menos 2 unidades amenazando al Elefante.", true);
+                            return;
                         }
                     }
+                    // -------------------------------------------
 
-                    // 2. Validación Geométrica
+                    // Validación Geométrica
                     if (!isValidMove(data.type, data.originR, data.originC, r, c)) {
-                        showNotification("⛔ Movimiento o Disparo ilegal"); return;
+                        showNotification("⛔ Movimiento ilegal"); return;
                     }
 
                     let wasCapture = false;
 
                     if (target) {
-                        // --- INTERACCIÓN CON OTRAS PIEZAS ---
                         if (target.army === data.army) {
-                            // Aliado -> Solo Lanceros
+                            // Aliado (Solo Lanceros)
                             if (data.type === 'lanceros') {
                                 logicBoard[data.originR][data.originC] = target;
                                 logicBoard[r][c] = { army: data.army, type: data.type };
-                                showNotification("🔄 ¡Maniobra de Lancero!");
-                            } else {
-                                showNotification("⛔ Casilla ocupada por aliado."); return;
-                            }
+                                showNotification("🔄 Relevo de Lancero");
+                            } else { showNotification("⛔ Casilla aliada."); return; }
                         } else {
-                            // --- ENEMIGO (CAPTURA / DISPARO) ---
+                            // Enemigo (Captura/Disparo)
                             wasCapture = true;
 
-                            // A. LÓGICA DE DISPARO (Trabuquete y Escorpión)
-                            // Si son estas armas y atacan, NO SE MUEVEN.
+                            // DISPARO (Trabuquete/Escorpión) - NO SE MUEVEN
                             if (data.type === 'trabuquete' || data.type === 'escorpion') {
+                                shotHighlights.push({ r: data.originR, c: data.originC, type: 'source' });
+                                shotHighlights.push({ r: r, c: c, type: 'target' });
 
-                                // 1. Registrar coordenadas con TIPO
-                                shotHighlights.push({ r: data.originR, c: data.originC, type: 'source' }); // Arma (Dorado)
-                                shotHighlights.push({ r: r, c: c, type: 'target' }); // Víctima (Oscuro)
-
-                                // 2. Caso Especial ESCORPIÓN (Doble Kill)
                                 if (data.type === 'escorpion') {
-                                    // Recorremos el camino para ver si perforamos a alguien
+                                    // Lógica perforación Escorpión
                                     const sR = Math.sign(r - data.originR);
                                     const sC = Math.sign(c - data.originC);
                                     let cR = data.originR + sR, cC = data.originC + sC;
-
                                     while (cR !== r || cC !== c) {
                                         const obs = logicBoard[cR][cC];
                                         if (obs && obs.army !== data.army) {
-                                            // ¡Enemigo intermedio perforado!
                                             dungeons[data.army].push({ type: obs.type, army: obs.army });
-                                            logicBoard[cR][cC] = null; // Eliminar del tablero
-                                            shotHighlights.push({ r: cR, c: cC, type: 'target' }); // Víctima intermedia (Oscuro)
+                                            logicBoard[cR][cC] = null;
+                                            shotHighlights.push({ r: cR, c: cC, type: 'target' });
                                         }
                                         cR += sR; cC += sC;
                                     }
                                 }
 
-                                // 3. Capturar Objetivo Principal
+                                // Captura Objetivo
                                 if (target.type === 'rey') {
-                                    gameState = 'game-over';
-                                    // Visualmente eliminamos al rey pero dejamos el arma en su sitio
-                                    logicBoard[r][c] = null;
-                                    renderBoard();
-
-                                    const winner = data.army === 'rojo' ? 'ROJO' : 'NEGRO';
-                                    const bar = document.getElementById('status-bar');
-                                    bar.innerText = `👑 ¡JAQUE MATE! EL TRABUQUETE/ESCORPIÓN HA ELIMINADO AL REY. VICTORIA ${winner}`;
-                                    bar.style.color = '#2ecc71';
+                                    gameState = 'game-over'; logicBoard[r][c] = null; renderBoard();
+                                    document.getElementById('status-bar').innerText = `👑 VICTORIA ${data.army.toUpperCase()}`;
                                     return;
                                 }
-
                                 dungeons[data.army].push({ type: target.type, army: target.army });
-                                logicBoard[r][c] = null; // La casilla destino queda vacía (muerto)
-                                // NO movemos el arma (logicBoard[origin] no se toca)
-
-                                showNotification("🔥 ¡DISPARO DE ASEDIO! Objetivo eliminado.");
-
+                                logicBoard[r][c] = null;
+                                showNotification("🔥 ¡DISPARO!");
                             } else {
-                                // --- CAPTURA CUERPO A CUERPO (Estándar) ---
-                                // Jaque Mate normal
+                                // CAPTURA CUERPO A CUERPO (Se mueven)
                                 if (target.type === 'rey') {
-                                    gameState = 'game-over';
-                                    logicBoard[data.originR][data.originC] = null;
-                                    logicBoard[r][c] = { army: data.army, type: data.type };
-                                    renderBoard();
-                                    const winner = data.army === 'rojo' ? 'ROJO' : 'NEGRO';
-                                    const bar = document.getElementById('status-bar');
-                                    bar.innerText = `👑 ¡JAQUE MATE! VICTORIA DEL EJÉRCITO ${winner}`;
-                                    bar.style.color = '#2ecc71';
+                                    gameState = 'game-over'; logicBoard[data.originR][data.originC] = null;
+                                    logicBoard[r][c] = { army: data.army, type: data.type }; renderBoard();
+                                    document.getElementById('status-bar').innerText = `👑 VICTORIA ${data.army.toUpperCase()}`;
                                     return;
                                 }
-
                                 dungeons[data.army].push({ type: target.type, army: target.army });
                                 logicBoard[data.originR][data.originC] = null;
                                 logicBoard[r][c] = { army: data.army, type: data.type };
-                                showNotification("⚔️ ¡CAPTURA! Prisionero a la mazmorra.");
+                                showNotification("⚔️ ¡CAPTURA!");
                             }
                         }
                     } else {
-                        // --- MOVIMIENTO A CASILLA VACÍA ---
+                        // Movimiento a vacío
                         logicBoard[data.originR][data.originC] = null;
                         logicBoard[r][c] = { army: data.army, type: data.type };
                         wasCapture = false;
                     }
 
-                    // --- PRE-CÁLCULO: ¿ESTE MOVIMIENTO INICIA UN ASEDIO? ---
+                    // --- Asedio creado? ---
                     let siegeCreated = false;
                     const enemyFortCheck = fortressPos[(data.army === 'rojo') ? 'negro' : 'rojo'];
-
                     if (enemyFortCheck) {
                         let count = 0;
-                        // Contamos rápidamente si ahora hay 2+ atacantes en la puerta enemiga
                         for (let rx = 0; rx < 10; rx++) {
                             for (let cx = 0; cx < 10; cx++) {
                                 if (isInExitZone(rx, cx, enemyFortCheck)) {
@@ -1500,52 +1472,27 @@
                         if (count >= 2) siegeCreated = true;
                     }
 
-                    // --- C. BONUS CHUSMA ---
-                    // Añadimos "&& !siegeCreated" para que el asedio corte el turno igual que una captura
+                    // --- Bonus Chusma ---
                     if (gameState === 'playing' && data.type === 'chusma' && !wasCapture && gameState !== 'siege-confirmation' && !siegeCreated) {
                         gameState = 'playing-chusma-bonus';
                         chusmaMovedCoords = { r: r, c: c };
-                        // Ahora este mensaje SÍ se verá gracias al bloqueo
-
-                        /* showNotification("⚡ ¡Marcha ligera! Mueve otra Chusma o haz click en esta para terminar."); */
-
-                        renderBoard(); updateInventories(); updateDungeons();
-                        checkTurnStatus();
+                        renderBoard(); updateInventories(); updateDungeons(); checkTurnStatus();
                         return;
                     }
                 }
 
-                // --- C. FINAL DEL TURNO Y VERIFICACIÓN DE ASEDIO ---
-
-                // Si estamos en FASE DE CONFIRMACIÓN (Atacante movió pieza) -> Volver a Defensa
+                // --- FINAL DE TURNO / GESTIÓN ASEDIO (IGUAL QUE ANTES) ---
                 if (gameState === 'siege-confirmation') {
-                    // Si moviste, cancelas la ejecución inmediata y pasas el turno al defensor
                     const defender = (data.army === 'rojo') ? 'negro' : 'rojo';
-                    turnColor = defender;
-                    gameState = 'playing';
-
-                    // 1. PRIMERO: Calculamos el nuevo estado (¿Se rompió el asedio o solo se movió?)
-                    checkTurnStatus();
-
-                    // 2. SEGUNDO: Pintamos (Ahora renderBoard sabrá si isBesieged es false y quitará el parpadeo)
-                    renderBoard(); updateInventories(); updateDungeons();
-
-                    // 3. TERCERO: Notificamos
-                    // Usamos el objeto siegeStatus para ver si la fortaleza del DEFENSOR sigue asediada
-                    // 3. TERCERO: Notificamos
-                    // Solo avisamos si se CANCELA. Si sigue asediado, la barra ROJA de checkTurnStatus ya está puesta.
-                    if (!siegeStatus[defender]) {
-                        showNotification("🏳️ Asedio cancelado. El defensor respira.");
-                    }
-
+                    turnColor = defender; gameState = 'playing';
+                    checkTurnStatus(); renderBoard(); updateInventories(); updateDungeons();
+                    if (!siegeStatus[defender]) showNotification("🏳️ Asedio cancelado.");
                     return;
                 }
 
-                // Si estamos en JUEGO NORMAL (Defensor intentó salvarse)
                 const defenderArmy = data.army;
                 const attackerArmy = (defenderArmy === 'rojo') ? 'negro' : 'rojo';
                 const myFort = fortressPos[defenderArmy];
-
                 if (myFort) {
                     let enemiesAtGate = 0;
                     for (let rx = 0; rx < 10; rx++) {
@@ -1556,65 +1503,29 @@
                             }
                         }
                     }
-
-                    // SI LA DEFENSA FALLA (Sigue habiendo 2+ enemigos)
                     if (enemiesAtGate >= 2) {
-                        // NUEVO: NO EJECUTAMOS TODAVÍA. PASAMOS A FASE DE CONFIRMACIÓN.
-                        gameState = 'siege-confirmation';
-                        turnColor = attackerArmy; // El turno vuelve al atacante
-
-                        /* isBesieged = false; */
-
-                        /* showNotification(`⚔️ ASEDIO LISTO: Pulsa la Fortaleza enemiga para ejecutar o mueve una pieza para cancelar.`); */
-
-                        renderBoard(); updateInventories(); updateDungeons();
-                        updateStatusBar();
+                        gameState = 'siege-confirmation'; turnColor = attackerArmy;
+                        renderBoard(); updateInventories(); updateDungeons(); updateStatusBar();
                         return;
                     }
                 }
 
-                // 3. SI NO HAY ASEDIO (O SE ROMPIÓ) -> CAMBIO DE TURNO NORMAL
-                turnColor = attackerArmy;
-                gameState = 'playing';
-                chusmaMovedCoords = null;
-
-                /* showNotification(`Turno ${getArmyName(turnColor)}`); */
-
-                // CAMBIO DE ORDEN: Primero calculamos el estado (para saber si hay que parpadear)
-                checkTurnStatus();
-
-                // Y luego pintamos (así el render ya sabe si isBesieged es true)
-                renderBoard();
-                updateInventories();
-                updateDungeons();
-
+                turnColor = attackerArmy; gameState = 'playing'; chusmaMovedCoords = null;
+                checkTurnStatus(); renderBoard(); updateInventories(); updateDungeons();
                 return;
             }
 
             // ============================================================
-            //  FASE 2: MODO DESPLIEGUE (SETUP)
+            //  FASE 2: MODO DESPLIEGUE (SETUP) - (MANTENER TU CÓDIGO ACTUAL)
             // ============================================================
-            // ... (Tu código de despliegue original sigue aquí, no hace falta tocarlo si ya funciona)
-            // Simplemente copia y pega tu bloque original de despliegue aquí debajo si lo borraste.
-            // Para ahorrar espacio, asumo que mantienes el bloque 'else if (gameState.includes("deploy"))' o similar
-            // Si en tu código estaba todo junto en handleDrop, asegúrate de mantener la parte de abajo.
-
-            // Como tu handleDrop original tenía la parte de despliegue al final sin 'else', 
-            // asegúrate de que este bloque de abajo esté presente:
-
+            // Copia aquí el bloque "const isFortress = ..." y todo el despliegue
+            // que ya tenías funcionando en 4.6. No hay cambios ahí.
+            // ... (Pega tu código de despliegue aquí) ...
             const isFortress = (data.type === 'fortaleza');
             const isMountain = (data.type === 'montana');
             const fOrigin = fortressPos[data.army];
             const hasFortress = fOrigin !== null;
 
-            // ... (Resto de tu lógica de despliegue tal cual la tenías en Cotadrez3.2.html líneas 733 en adelante) ...
-
-            // IMPORTANTE: Dado que he cortado aquí para no hacer el mensaje eterno, 
-            // ASEGÚRATE de copiar la parte de DESPLIEGUE que tenías en tu archivo original 
-            // justo después del bloque 'if (gameState === 'playing' ... ) { ... }' que acabamos de cerrar.
-            // O usa la versión completa que te paso a continuación para evitar líos.
-
-            // -- BLOQUE DE DESPLIEGUE RESUMIDO PARA QUE COPIES Y PEGUES TODO SI QUIERES --
             // Validaciones
             if (!isFortress && !hasFortress) { showNotification("🚫 Primero debes construir la FORTALEZA", true); return; }
 
@@ -1678,7 +1589,6 @@
             renderBoard();
             updateInventories();
         }
-
 
         function updateDungeons() {
             ['rojo', 'negro'].forEach(jailerArmy => {
@@ -1835,43 +1745,44 @@
         }
 
         function getStatusText() {
+            // A. PRIORIDAD ABSOLUTA: Fin de juego o Inicio
             if (gameState === 'game-over') return document.getElementById('status-bar').innerText;
+            if (gameState === 'init') return "Elige tu destino: Arrastra una Fortaleza para empezar.";
 
             const currentArmy = getArmyName(turnColor);
 
-            // 0. NUEVO: SELECCIÓN DE PRISIONERO
+            // B. FASES DE INTERACCIÓN FORZADA (El juego está en pausa esperando un click específico)
             if (gameState === 'siege-prisoner-select') {
-                return `🔓 DEFENSA FALLIDA: ${currentArmy}, ¡LIBERA A UN PRISIONERO!`;
+                return `🔓 DEFENSA FALLIDA: ${currentArmy}, ¡SELECCIONA UN PRISIONERO PARA LIBERAR!`;
             }
-
             if (gameState === 'siege-confirmation') {
-                return `🎯 ASEDIO LISTO: ${currentArmy}, PULSA LA FORTALEZA PARA EJECUTAR O MUEVE PARA REPOSICIONAR.`;
+                return `🎯 ASEDIO LISTO: ${currentArmy}, PULSA LA FORTALEZA PARA EJECUTAR O MUEVE TROPAS.`;
             }
-
-            // 1. ASEDIO ACTIVO (Resolución)
             if (gameState === 'siege-resolution') {
-                return `🔥 ¡ASEDIO TOTAL! EL EJÉRCITO ${currentArmy} DEBE SALVAR UNA PIEZA (EL RESTO MORIRÁ).`;
+                return `🔥 ¡SACRIFICIO! EL EJÉRCITO ${currentArmy} DEBE SALVAR UNA PIEZA (EL RESTO MORIRÁ).`;
             }
 
-            // 2. JAQUE
-            if (isCheck) {
-                return `⚠️ ¡JAQUE AL REY ${currentArmy}! DEBES PROTEGERLO. ⚠️`;
-            }
-
-            // 3. ASEDIO INMINENTE (Fortaleza rodeada)
-            // Solo mostramos alerta si es MI turno y MI fortaleza está asediada
-            if (siegeStatus[turnColor] === true) {
-                return `🛡️ ¡ALERTA DE ASEDIO! LA FORTALEZA ${currentArmy} ESTÁ RODEADA. ROMPE EL CERCO O PERDERÁS TROPAS.`;
-            }
-
-            // 4. BONUS CHUSMA
+            // C. BONUS DE CHUSMA (Estado especial de medio turno)
             if (gameState === 'playing-chusma-bonus') {
-                return `⚡ BONIFICACIÓN CHUSMA: Mueve otra unidad de Chusma o finaliza el turno.`;
+                return `⚡ BONIFICACIÓN CHUSMA: Mueve otra Chusma o haz click en la misma para terminar.`;
             }
 
-            // 5. ESTÁNDAR
-            if (gameState === 'init') return "Elige tu destino: Arrastra una Fortaleza para empezar.";
-            if (gameState.includes('deploy')) return `Fase Despliegue: ${(gameState === 'deploy-p1' ? p1Color : p2Color).toUpperCase()}`;
+            // D. ESTADOS DE ALERTA (Juego normal pero con peligro)
+            // 1. JAQUE (Prioridad alta)
+            if (isCheck) {
+                return `⚠️ ¡JAQUE AL REY ${currentArmy}! DEBES PROTEGERLO INMEDIATAMENTE. ⚠️`;
+            }
+
+            // 2. ASEDIO INMINENTE (Aviso pasivo: "Te están rodeando")
+            if (siegeStatus[turnColor] === true) {
+                return `🛡️ ¡ALERTA! LA FORTALEZA ${currentArmy} ESTÁ RODEADA. ROMPE EL CERCO O PERDERÁS TROPAS.`;
+            }
+
+            // E. ESTADO ESTÁNDAR (Juego normal o despliegue)
+            if (gameState.includes('deploy')) {
+                const player = (gameState === 'deploy-p1' ? p1Color : p2Color);
+                return `Fase Despliegue: ${player ? player.toUpperCase() : ''}`;
+            }
 
             return `Turno ${currentArmy}`;
         }
@@ -1914,21 +1825,20 @@
             const target = logicBoard[r2][c2];
 
             if (myPiece && target && target.type === 'elefante' && target.army !== myPiece.army) {
-                // A. El Dragón es el depredador natural (Captura directa)
+                // A. El Dragón ignora la regla
                 if (type === 'dragon') {
-                    // Pasa sin restricciones, permitimos que valide la geometría abajo
+                    // Pasa
                 }
-                // B. El resto necesita "Caza en Grupo" (Al menos 2 unidades amenazando)
                 else {
-                    // Si no hay mapa o no hay suficientes atacantes...
-                    if (!currentAttackMap || currentAttackMap[r2][c2] < 2) {
-                        // ¡AVISO AL JUGADOR!
-                        /* showNotification("🐘 ¡IMPOSIBLE! Necesitas apoyo (2+ unidades) o un Dragón para cazar al Elefante."); */
-                        return false;
+                    // B. LÓGICA SIMPLIFICADA: Total amenazas >= 2
+                    // (Yo cuento como 1, así que necesito a alguien más)
+                    const totalThreats = countTotalThreats(r2, c2, myPiece.army);
+
+                    if (totalThreats < 2) {
+                        return false; // Bloqueo visual (Rojo)
                     }
                 }
             }
-
             // --- 1. REY (1 casilla alrededor) ---
             if (type === 'rey') {
                 // NUEVO: No puede moverse a una casilla amenazada (Suicidio)
@@ -2421,8 +2331,15 @@
         function updateStatusBar() {
             const bar = document.getElementById('status-bar');
 
-            // Calculamos si la situación es CRÍTICA
-            // AÑADIDO: 'siege-prisoner-select' para que no parpadee al elegir prisionero
+            // Si hay una notificación temporal activa (ej: "No puedes mover ahí"), no la tocamos
+            if (isNotificationActive) return;
+
+            // 1. Obtenemos el texto según la jerarquía del Paso 2
+            const text = getStatusText();
+            bar.innerText = text;
+
+            // 2. Determinamos si es una situación CRÍTICA para ponerlo en ROJO/PARPADEANTE
+            // (Jaque, Asedio Resolución, Asedio Confirmación, Alerta de Asedio)
             const isCritical = (
                 gameState === 'siege-resolution' ||
                 gameState === 'siege-confirmation' ||
@@ -2431,35 +2348,36 @@
                 isCheck
             );
 
-            // SISTEMA DE PRIORIDADES:
-            if (isNotificationActive && !isCritical) return;
-
-            const text = getStatusText();
-            bar.innerText = text;
-
+            // 3. Aplicamos estilos
             if (isCritical) {
-                bar.classList.add('status-critical');
-                bar.style.opacity = 1;
+                bar.classList.add('status-critical'); // Clase CSS con animación roja
+                bar.style.color = '#ff2e2e'; // Aseguramos rojo
             } else {
                 bar.classList.remove('status-critical');
-                if (!bar.style.color || bar.style.color === 'rgb(231, 76, 60)') {
-                    bar.style.color = 'var(--c-gold)';
+                // Si es bonus de chusma, color especial (Cyan o Dorado), si no, Dorado estándar
+                if (gameState === 'playing-chusma-bonus') {
+                    bar.style.color = '#3498db'; // Azul claro para diferenciar
+                } else {
+                    bar.style.color = 'var(--c-gold)'; // Color normal
                 }
             }
+
+            bar.style.opacity = 1;
         }
 
         // Traduce el color del ejército a su territorio (Norte/Sur)
         function getArmyName(armyColor) {
-            // Si aún no hemos definido territorios (inicio), devolvemos el color
+            // 1. SEGURIDAD: Si es null (inicio), devolvemos cadena vacía para evitar crash
+            if (!armyColor) return "";
+
+            // 2. Si aún no hay territorios definidos, devolvemos el color genérico
             if (!p1Territory) return "DE " + armyColor.toUpperCase();
 
             const isP1 = (armyColor === p1Color);
-            // Si soy P1 y P1 es Norte -> Norte. Si no -> Sur.
             const isNorth = isP1 ? (p1Territory === 'north') : (p1Territory === 'south');
 
             return isNorth ? "DEL NORTE" : "DEL SUR";
         }
-
 
         // Ejecuta el asedio cuando no hay prisioneros que rescatar
         function triggerEmptySiege(attacker, victim) {
@@ -2605,7 +2523,7 @@
                 /* let msg = wasExchange
                     ? `🚨 FORTALEZA CAÍDA: ${victimArmy.toUpperCase()}, salva una unidad.`
                     : `👑 ¡PELIGRO CRÍTICO! ${victimArmy.toUpperCase()}, DEBES SALVAR AL REY (El resto será capturado).`;
-
+ 
                 showNotification(msg); */
 
                 gameState = 'siege-resolution';
@@ -2640,6 +2558,64 @@
                 // CASO B: NO HAY PRISIONEROS -> RESOLUCIÓN DIRECTA
                 resolveSiegeNoPrisoners(attackerArmy, defenderArmy);
             }
+        }
+
+        // Cuenta cuántas unidades del 'attackingArmy' amenazan la casilla (r, c)
+        // Se usa para validar la captura del Elefante en tiempo real
+        function countThreatsOnTarget(r, c, attackingArmy) {
+            let threats = 0;
+            for (let tr = 0; tr < 10; tr++) {
+                for (let tc = 0; tc < 10; tc++) {
+                    const piece = logicBoard[tr][tc];
+                    // Si hay una pieza aliada y NO es la que está en la casilla destino (obvio)
+                    if (piece && piece.army === attackingArmy) {
+                        // Verificamos si esa pieza puede atacar la casilla objetivo
+                        if (canUnitAttack(piece.type, tr, tc, r, c, attackingArmy)) {
+                            threats++;
+                        }
+                    }
+                }
+            }
+            return threats;
+        }
+
+        // Cuenta cuántos ALIADOS (excluyendo al propio atacante) amenazan la casilla objetivo
+        function countAlliesThreatening(targetR, targetC, army, excludeR, excludeC) {
+            let allies = 0;
+            for (let tr = 0; tr < 10; tr++) {
+                for (let tc = 0; tc < 10; tc++) {
+                    // Saltamos nuestra propia casilla de origen (porque nos estamos moviendo/disparando)
+                    if (tr === excludeR && tc === excludeC) continue;
+
+                    const piece = logicBoard[tr][tc];
+                    if (piece && piece.army === army) {
+                        // Verificamos si este aliado puede atacar la casilla objetivo
+                        if (canUnitAttack(piece.type, tr, tc, targetR, targetC, army)) {
+                            allies++;
+                        }
+                    }
+                }
+            }
+            return allies;
+        }
+
+
+        // Cuenta TODAS las unidades (yo incluido) que amenazan la casilla objetivo
+        function countTotalThreats(targetR, targetC, army) {
+            let threats = 0;
+            for (let tr = 0; tr < 10; tr++) {
+                for (let tc = 0; tc < 10; tc++) {
+                    const piece = logicBoard[tr][tc];
+                    if (piece && piece.army === army) {
+                        // Verificamos si esta pieza puede atacar la casilla objetivo
+                        // No hace falta excluir nada: si yo ataco, cuento como 1.
+                        if (canUnitAttack(piece.type, tr, tc, targetR, targetC, army)) {
+                            threats++;
+                        }
+                    }
+                }
+            }
+            return threats;
         }
 
     </script>
