@@ -459,7 +459,10 @@
 
         let besiegedArmy = null; // Guardará 'rojo' o 'negro' durante la resolución del asedio
 
-        let isBesieged = false; // Nueva bandera para el estado de Asedio
+        // CAMBIO: DEJAMOS DE USAR UN BOOLEANO SIMPLE
+        let siegeStatus = { rojo: false, negro: false }; // Estado de asedio INDEPENDIENTE para cada bando
+
+        /* let isBesieged = false; // Nueva bandera para el estado de Asedio */
 
         let currentThreatMap = null; // Mapa Defensivo (Dónde me atacan)
 
@@ -587,22 +590,20 @@
                         img.src = getImgUrl(piece.army, piece.type);
                         img.className = 'piece';
 
-                        // --- NUEVO: PARPADEO Y CLICK DE FORTALEZA ASEDIADA ---
+                        // --- LÓGICA DE PARPADEO DE FORTALEZA ---
                         if (piece.type === 'fortaleza') {
-                            const enemyArmy = (piece.army === 'rojo') ? 'negro' : 'rojo';
-
-                            // Si soy la fortaleza enemiga y estoy en fase de confirmación -> CLICKABLE
+                            // 1. Fase de Confirmación (Turno Atacante): La fortaleza enemiga es clickable
                             if (gameState === 'siege-confirmation' && piece.army !== turnColor) {
                                 img.classList.add('siege-pulse');
                                 img.onclick = () => executeConfirmedSiege(turnColor, piece.army);
                                 img.title = "CLICK PARA EJECUTAR EL ASEDIO";
                             }
-                            // Si simplemente hay amenaza (fase defensa), solo parpadeo visual
-                            else if (isBesieged && piece.army === turnColor) {
+                            // 2. Fase Normal (Turno Defensor): Si MI fortaleza está asediada, parpadea
+                            // Usamos siegeStatus[piece.army] para saber si ESTA fortaleza concreta sufre asedio
+                            else if (siegeStatus[piece.army] === true) {
                                 img.classList.add('siege-pulse');
                             }
                         }
-
 
                         // --- GESTIÓN DE ARRASTRE Y CLICKS ---
                         let canDrag = true;
@@ -849,8 +850,9 @@
             if (!draggingMeta) return;
             clearGhosts();
 
-            // --- NUEVO: LÓGICA ESPECÍFICA PARA FASE DE JUEGO (Y CONFIRMACIÓN) ---
-            if (gameState === 'playing' || gameState === 'siege-confirmation') {
+            // --- NUEVO: LÓGICA ESPECÍFICA PARA FASE DE JUEGO (Y CONFIRMACIÓN Y BONUS) ---
+            if (gameState === 'playing' || gameState === 'siege-confirmation' || gameState === 'playing-chusma-bonus') {
+
                 let isValid = true;
                 const target = logicBoard[r][c];
                 const type = draggingMeta.type;
@@ -1203,17 +1205,35 @@
                         wasCapture = false;
                     }
 
-                    // --- C. BONUS CHUSMA ---
-                    // Añadimos "&& gameState !== 'siege-confirmation'" para evitar que salte al recolocar el asedio
-                    if (gameState === 'playing' && data.type === 'chusma' && !wasCapture && gameState !== 'siege-confirmation') {
-                        gameState = 'playing-chusma-bonus';
-                        chusmaMovedCoords = { r: r, c: c };
-                        showNotification("⚡ ¡Marcha ligera! Mueve otra Chusma o haz click en esta para terminar.");
-                        renderBoard(); updateInventories(); updateDungeons();
-                        checkTurnStatus();
-                        return;
+                    // --- PRE-CÁLCULO: ¿ESTE MOVIMIENTO INICIA UN ASEDIO? ---
+                    let siegeCreated = false;
+                    const enemyFortCheck = fortressPos[(data.army === 'rojo') ? 'negro' : 'rojo'];
+
+                    if (enemyFortCheck) {
+                        let count = 0;
+                        // Contamos rápidamente si ahora hay 2+ atacantes en la puerta enemiga
+                        for (let rx = 0; rx < 10; rx++) {
+                            for (let cx = 0; cx < 10; cx++) {
+                                if (isInExitZone(rx, cx, enemyFortCheck)) {
+                                    const u = logicBoard[rx][cx];
+                                    if (u && u.army === data.army) count++;
+                                }
+                            }
+                        }
+                        if (count >= 2) siegeCreated = true;
                     }
+
+                // --- C. BONUS CHUSMA ---
+                // Añadimos "&& !siegeCreated" para que el asedio corte el turno igual que una captura
+                if (gameState === 'playing' && data.type === 'chusma' && !wasCapture && gameState !== 'siege-confirmation' && !siegeCreated) {
+                    gameState = 'playing-chusma-bonus';
+                    chusmaMovedCoords = { r: r, c: c };
+                    showNotification("⚡ ¡Marcha ligera! Mueve otra Chusma o haz click en esta para terminar.");
+                    renderBoard(); updateInventories(); updateDungeons();
+                    checkTurnStatus();
+                    return;
                 }
+            }
 
                 // --- C. FINAL DEL TURNO Y VERIFICACIÓN DE ASEDIO ---
 
@@ -1230,8 +1250,9 @@
                     // 2. SEGUNDO: Pintamos (Ahora renderBoard sabrá si isBesieged es false y quitará el parpadeo)
                     renderBoard(); updateInventories(); updateDungeons();
 
-                    // 3. TERCERO: Notificamos (Al ir al final, este mensaje tiene prioridad sobre la alerta roja)
-                    if (isBesieged) {
+                    // 3. TERCERO: Notificamos
+                    // Usamos el objeto siegeStatus para ver si la fortaleza del DEFENSOR sigue asediada
+                    if (siegeStatus[defender]) {
                         showNotification("🔄 Asedio reposicionado. Turno de defensa.");
                     } else {
                         showNotification("🏳️ Asedio cancelado. El defensor respira.");
@@ -1262,7 +1283,7 @@
                         gameState = 'siege-confirmation';
                         turnColor = attackerArmy; // El turno vuelve al atacante
 
-                        isBesieged = false;
+                        /* isBesieged = false; */
 
                         showNotification(`⚔️ ASEDIO LISTO: Pulsa la Fortaleza enemiga para ejecutar o mueve una pieza para cancelar.`);
                         renderBoard(); updateInventories(); updateDungeons();
@@ -1554,8 +1575,9 @@
                 return `⚠️ ¡JAQUE AL REY ${currentArmy}! DEBES PROTEGERLO. ⚠️`;
             }
 
-            // 3. ASEDIO INMINENTE (Fortaleza rodeada) <--- ESTO FALTABA
-            if (isBesieged) {
+            // 3. ASEDIO INMINENTE (Fortaleza rodeada)
+            // Solo mostramos alerta si es MI turno y MI fortaleza está asediada
+            if (siegeStatus[turnColor] === true) {
                 return `🛡️ ¡ALERTA DE ASEDIO! LA FORTALEZA ${currentArmy} ESTÁ RODEADA. ROMPE EL CERCO O PERDERÁS TROPAS.`;
             }
 
@@ -1790,7 +1812,7 @@
         }
 
         function finishChusmaBonusTurn() {
-            isBesieged = false; // <--- AÑADE ESTA LÍNEA: Apaga la alarma anterior a la fuerza
+            /* isBesieged = false; // <--- AÑADE ESTA LÍNEA: Apaga la alarma anterior a la fuerza */
             // Cambiar turno y volver a la normalidad
             turnColor = (turnColor === 'rojo') ? 'negro' : 'rojo';
             gameState = 'playing';
@@ -1976,38 +1998,43 @@
             return false;
         }
 
-        // Verifica si el jugador del turno actual (turnColor) ha perdido o empatado
+        // Verifica amenazas y estados globales
         function checkTurnStatus() {
-            // 1. Calcular mapas
+            // 1. Calcular mapas de amenaza
             const enemy = (turnColor === 'rojo') ? 'negro' : 'rojo';
             const threatMap = getThreatMap(enemy);
             const attackMap = getThreatMap(turnColor);
 
-            // A. DETECCIÓN DE ASEDIO (ESTE BLOQUE FALTABA EN TU ARCHIVO)
-            isBesieged = false;
-            const myFort = fortressPos[turnColor];
+            // A. DETECCIÓN DE ASEDIO (ESCANEO GLOBAL INDEPENDIENTE)
+            // Reiniciamos el estado
+            siegeStatus.rojo = false;
+            siegeStatus.negro = false;
 
-            if (myFort) {
-                let enemiesAtGate = 0;
-                // Revisamos todo el tablero buscando enemigos en MI anillo
-                for (let r = 0; r < 10; r++) {
-                    for (let c = 0; c < 10; c++) {
-                        // Si la casilla es parte de mi anillo de salida
-                        if (isInExitZone(r, c, myFort)) {
-                            const p = logicBoard[r][c];
-                            // Y hay una unidad enemiga
-                            if (p && p.army === enemy) {
-                                enemiesAtGate++;
+            ['rojo', 'negro'].forEach(army => {
+                const fort = fortressPos[army];
+                if (fort) {
+                    const attacker = (army === 'rojo') ? 'negro' : 'rojo';
+                    let enemiesAtGate = 0;
+
+                    // Escaneamos el anillo de ESTA fortaleza concreta
+                    for (let r = 0; r < 10; r++) {
+                        for (let c = 0; c < 10; c++) {
+                            if (isInExitZone(r, c, fort)) {
+                                const p = logicBoard[r][c];
+                                if (p && p.army === attacker) {
+                                    enemiesAtGate++;
+                                }
                             }
                         }
                     }
+                    // Si hay 2+ enemigos, ESTA fortaleza específica está asediada
+                    if (enemiesAtGate >= 2) {
+                        siegeStatus[army] = true;
+                    }
                 }
-                // Si hay 2 o más, activamos la bandera de asedio
-                if (enemiesAtGate >= 2) isBesieged = true;
-            }
+            });
 
-
-            // B. BUSCAR AL REY
+            // B. BUSCAR AL REY (Del jugador activo)
             let kingPos = null;
             let hasPieces = false;
             for (let r = 0; r < 10; r++) {
@@ -2021,7 +2048,7 @@
             }
 
             if (!kingPos) {
-                isCheck = false; // <--- LIMPIEZA OBLIGATORIA DEL ESTADO ANTERIOR
+                isCheck = false;
                 updateStatusBar();
                 return;
             }
@@ -2029,10 +2056,9 @@
             // 2. DETECCIÓN DE JAQUE
             isCheck = (threatMap[kingPos.r][kingPos.c] > 0);
 
-            // C. ACTUALIZAR INTERFAZ (PRIORIDAD ALERTA)
-            if (isCheck || isBesieged) {
-                updateStatusBar();
-            }
+            // C. ACTUALIZAR INTERFAZ
+            // La prioridad visual se gestiona en updateStatusBar
+            updateStatusBar();
 
             // D. VERIFICAR MOVIMIENTOS LEGALES (MATE / AHOGADO)
             currentThreatMap = threatMap;
@@ -2088,8 +2114,8 @@
             const text = getStatusText();
             bar.innerText = text;
 
-            // AÑADIMOS isBesieged A LA CONDICIÓN DE PÁNICO
-            if (gameState === 'siege-resolution' || isCheck || isBesieged) {
+            // ACTUALIZADO: Usamos siegeStatus del turno actual
+            if (gameState === 'siege-resolution' || isCheck || siegeStatus[turnColor]) {
                 bar.classList.add('status-critical');
             } else {
                 bar.classList.remove('status-critical');
@@ -2201,8 +2227,8 @@
 
         // 3. FASE FINAL: Verificar si hay sacrificio o si la fortaleza está vacía
         function startSacrificePhase(victimArmy, wasExchange) {
-            turnColor = victimArmy; // Aseguramos que el turno es del defensor
-            isBesieged = false; // <--- AÑADE ESTA LÍNEA: Apaga la alarma anterior a la fuerza
+            turnColor = victimArmy;
+            siegeStatus[victimArmy] = false;
 
             // 1. Comprobar reservas
             let hasReserves = false;
