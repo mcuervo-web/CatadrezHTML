@@ -56,6 +56,29 @@
             /* Para que no salte si está vacío */
         }
 
+        /* --- ESTADO CRÍTICO (JAQUE / ASEDIO) --- */
+        .status-critical {
+            color: #ff2e2e !important;
+            /* Rojo brillante */
+            font-weight: 800 !important;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px rgba(255, 0, 0, 0.8);
+            /* Resplandor rojo */
+            animation: pulse-text 0.8s infinite alternate;
+        }
+
+        @keyframes pulse-text {
+            from {
+                text-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
+                transform: scale(1);
+            }
+
+            to {
+                text-shadow: 0 0 20px rgba(255, 0, 0, 1);
+                transform: scale(1.02);
+            }
+        }
+
         /* --- LAYOUT PRINCIPAL --- */
         .main-container {
             display: flex;
@@ -393,6 +416,10 @@
 
         let besiegedArmy = null; // Guardará 'rojo' o 'negro' durante la resolución del asedio
 
+        let currentThreatMap = null; // Guardará el mapa de calor actual
+
+        let isCheck = false; // Nueva bandera para el estado de Jaque
+
         // Almacena los prisioneros capturados POR cada jugador
         let dungeons = { rojo: [], negro: [] };
 
@@ -403,23 +430,23 @@
         let p1Territory = null; // 'north' (filas 0-4) o 'south' (filas 5-9)
         let turnColor = null; // 'rojo' o 'negro'
 
-        // Función auxiliar para mostrar mensajes temporales
         function showNotification(msg, isError = false) {
             const bar = document.getElementById('status-bar');
             bar.innerText = msg;
-            bar.style.color = isError ? '#e74c3c' : '#f1c40f'; // Rojo si es error, Dorado si es info
 
-            // Efecto visual: parpadeo rápido
+            // Si es error, rojo estándar. Si es info, dorado. 
+            // PERO si estamos en CRÍTICO, mantenemos la clase parpadeante si no es un error momentáneo.
+            bar.classList.remove('status-critical'); // Quitamos parpadeo temporalmente para leer el mensaje
+            bar.style.color = isError ? '#e74c3c' : '#f1c40f';
+
             bar.style.opacity = 0;
             setTimeout(() => bar.style.opacity = 1, 100);
 
-            // Volver al mensaje por defecto tras 3 segundos
-            if (isError) {
-                setTimeout(() => {
-                    bar.innerText = getStatusText();
-                    bar.style.color = '#f1c40f';
-                }, 3000);
-            }
+            // Al terminar la notificación, volvemos al estado real del juego
+            setTimeout(() => {
+                updateStatusBar(); // <--- ESTA ES LA CLAVE: Restaurar estado crítico si existe
+                bar.style.opacity = 1; // Asegurar visibilidad
+            }, 3000);
         }
 
 
@@ -667,6 +694,12 @@
                     }
                 }
             }
+
+            // CALCULAR AMENAZAS ENEMIGAS ---
+            // Si soy rojo, quiero saber dónde ataca el negro para evitar esas casillas
+            const enemy = (army === 'rojo') ? 'negro' : 'rojo';
+            currentThreatMap = getThreatMap(enemy);
+
             // 1. Guardamos metadatos (AÑADIDO: coordenadas de origen)
             draggingMeta = {
                 type: type,
@@ -1052,6 +1085,7 @@
                 chusmaMovedCoords = null;
                 showNotification(`Turno de ${turnColor.toUpperCase()}`);
                 renderBoard(); updateInventories(); updateDungeons();
+                checkTurnStatus();
                 return;
             }
 
@@ -1256,7 +1290,8 @@
             turnColor = besiegedArmy;
 
             // 3. Feedback
-            showNotification(`⚠️ ¡ASEDIO! ${besiegedArmy.toUpperCase()} debe salvar una pieza. El resto morirá.`);
+            // EN LUGAR DE showNotification, forzamos el estado crítico YA
+            updateStatusBar();
 
             renderBoard();
             updateInventories();
@@ -1266,23 +1301,29 @@
         function getStatusText() {
             if (gameState === 'game-over') return document.getElementById('status-bar').innerText;
 
+            // 1. PRIORIDAD MÁXIMA: ASEDIO
             if (gameState === 'siege-resolution') {
-                return `🔥 ¡ASEDIO! ${turnColor.toUpperCase()} debe desplegar una pieza (Rey prioritario).`;
+                return `🔥 ¡ASEDIO! ${turnColor.toUpperCase()} DEBE SALVAR UNA PIEZA O PERDERÁ EL RESTO.`;
             }
 
-            // --- CORRECCIÓN: Este estado debe ir ANTES del return por defecto ---
+            // 2. PRIORIDAD ALTA: JAQUE
+            if (isCheck) {
+                return `⚠️ ¡JAQUE AL REY ${turnColor.toUpperCase()}! DEBES PROTEGERLO. ⚠️`;
+            }
+
+            // 3. PRIORIDAD MEDIA: BONUS CHUSMA
             if (gameState === 'playing-chusma-bonus') {
                 return `⚡ BONIFICACIÓN CHUSMA: Mueve otra unidad de Chusma o finaliza el turno.`;
             }
-            // -------------------------------------------------------------------
 
+            // 4. ESTÁNDAR
             if (gameState === 'init') return "Elige tu destino: Arrastra una Fortaleza para empezar.";
-            if (gameState === 'deploy-p1') return `Fase Despliegue: JUGADOR 1 (${p1Color.toUpperCase()})`;
-            if (gameState === 'deploy-p2') return `Fase Despliegue: JUGADOR 2 (${p2Color.toUpperCase()})`;
-            if (gameState === 'playing') return `¡Batalla en curso! Turno de ${turnColor.toUpperCase()}`;
+            if (gameState.includes('deploy')) return `Fase Despliegue: ${(gameState === 'deploy-p1' ? p1Color : p2Color).toUpperCase()}`;
+            if (gameState === 'playing') return `Turno de ${turnColor.toUpperCase()}`;
 
             return "Cotadrez";
         }
+
         // Pinta el anillo de salida de la fortaleza del ejército indicado
         function highlightFortressRing(army) {
             const fPos = fortressPos[army];
@@ -1316,9 +1357,15 @@
             const dR = Math.abs(r2 - r1);
             const dC = Math.abs(c2 - c1);
 
-            // --- 1. REY ---
-            if (type === 'rey') return (dR <= 1 && dC <= 1) && (dR + dC > 0);
-
+            // --- 1. REY (1 casilla alrededor) ---
+            if (type === 'rey') {
+                // NUEVO: No puede moverse a una casilla amenazada (Suicidio)
+                // currentThreatMap se calcula en handleDragStart
+                if (currentThreatMap && currentThreatMap[r2][c2] > 0) {
+                    return false;
+                }
+                return (dR <= 1 && dC <= 1) && (dR + dC > 0);
+            }
             // --- 2. LANCEROS / CHUSMA ---
             if (type === 'lanceros' || type === 'chusma') return (dR + dC === 1);
 
@@ -1484,6 +1531,7 @@
             showNotification(`Turno de ${turnColor.toUpperCase()}`);
             renderBoard();
             updateInventories();
+            checkTurnStatus();
         }
 
         // --- SISTEMA DE AMENAZAS (Influence Maps) ---
@@ -1657,6 +1705,112 @@
             if (type === 'escorpion') return checkRay(false, true, false, true); // Dispara Diag
 
             return false;
+        }
+
+        // Verifica si el jugador del turno actual (turnColor) ha perdido o empatado
+        function checkTurnStatus() {
+            // 1. Calcular mapa de amenazas CONTRA el jugador actual
+            const enemy = (turnColor === 'rojo') ? 'negro' : 'rojo';
+            // Usamos tu función existente
+            const threatMap = getThreatMap(enemy);
+
+            // 2. Buscar al Rey actual
+            let kingPos = null;
+            let hasPieces = false;
+
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 10; c++) {
+                    const p = logicBoard[r][c];
+                    if (p && p.army === turnColor) {
+                        hasPieces = true;
+                        if (p.type === 'rey') kingPos = { r, c };
+                    }
+                }
+            }
+
+            if (!kingPos) return; // (Raro, rey capturado antes)
+
+            // 3. ¿Está el Rey en Jaque?
+            isCheck = (threatMap[kingPos.r][kingPos.c] > 0); // <--- GUARDAMOS EL ESTADO
+
+            // Si hay jaque, lo mostramos inmediatamente como prioritario
+            if (isCheck) {
+                // Ya no necesitamos showNotification temporal, actualizamos la barra fija
+                updateStatusBar();
+                // Opcional: Sonido de alerta
+            }
+            // 4. ¿Tiene algún movimiento legal? (Para ver si es Mate o Ahogado)
+            // IMPORTANTE: Simulamos un "DragStart" virtual para que isValidMove tenga el mapa
+            currentThreatMap = threatMap;
+
+            let hasMoves = false;
+
+            // Recorremos todas mis piezas para ver si ALGUNA puede mover
+            outerLoop:
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 10; c++) {
+                    const p = logicBoard[r][c];
+                    if (p && p.army === turnColor) {
+                        // Probamos moverlas a todo el tablero
+                        for (let tr = 0; tr < 10; tr++) {
+                            for (let tc = 0; tc < 10; tc++) {
+                                // Usamos tu isValidMove (que ahora protege al rey)
+                                if (isValidMove(p.type, r, c, tr, tc)) {
+                                    // Validaciones extra de terreno/ocupación básicas que no están en isValidMove
+                                    // (Copiamos la lógica básica de handleDrop para asegurar)
+                                    if (terrain[tr][tc] === 'water' && p.type !== 'trabuquete' && p.type !== 'escorpion') continue;
+                                    const target = logicBoard[tr][tc];
+                                    if (target && target.army === turnColor && p.type !== 'lanceros') continue;
+                                    if (target && (target.type === 'montana' || target.type === 'fortaleza')) continue;
+
+                                    // ¡Encontramos al menos un movimiento válido!
+                                    hasMoves = true;
+                                    break outerLoop;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. Resolución
+            if (!hasMoves) {
+                if (isCheck) {
+                    // Jaque + Sin Movimientos = MATE
+                    finishGame((turnColor === 'rojo' ? 'negro' : 'rojo'), "POR JAQUE MATE");
+                } else {
+                    // No Jaque + Sin Movimientos = AHOGADO
+                    finishGame(null, "TABLAS POR REY AHOGADO");
+                }
+            }
+        }
+
+        // Helper para terminar partida (si no la tenías ya de mis intentos anteriores)
+        function finishGame(winnerArmy, reason = "") {
+            gameState = 'game-over';
+            const winnerText = winnerArmy ? `VICTORIA DEL EJÉRCITO ${winnerArmy.toUpperCase()}` : "EMPATE";
+            const bar = document.getElementById('status-bar');
+            bar.innerText = `🏁 FIN DE PARTIDA: ${reason}. ${winnerText}`;
+            bar.style.color = winnerArmy ? '#2ecc71' : '#fff';
+            bar.style.fontWeight = 'bold';
+        }
+
+        // Actualiza la barra de estado gestionando prioridades y colores
+        function updateStatusBar() {
+            const bar = document.getElementById('status-bar');
+            const text = getStatusText(); // Obtenemos el mensaje correcto
+            bar.innerText = text;
+
+            // Lógica de Pánico: Si es Asedio o Jaque -> ROJO PARPADEANTE
+            if (gameState === 'siege-resolution' || isCheck) {
+                bar.classList.add('status-critical');
+            } else {
+                bar.classList.remove('status-critical');
+                // Restaurar color dorado por defecto si venimos de un error
+                if (!bar.style.color || bar.style.color === 'rgb(231, 76, 60)') {
+                    bar.style.color = 'var(--c-gold)';
+                }
+            }
         }
 
     </script>
