@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Cotadrez - Motor de Movimiento Corregido</title>
+    <title>Cotadrez - El Vuelo del Dragón</title>
     <style>
         body { background-color: #1a252f; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         .game-layout { display: flex; gap: 30px; align-items: flex-start; margin-top: 20px; }
@@ -30,7 +30,7 @@
 <body>
 
     <h1>COTADREZ</h1>
-    <div id="status-msg">Cargando...</div>
+    <div id="status-msg">Cargando unidades...</div>
 
     <div class="game-layout">
         <div class="inventory-panel" id="inv-rojo">
@@ -60,7 +60,7 @@ const CONFIG = {
         { id: "elefante", archivo: "Elefante.svg", cant: 2, size: 1 },
         { id: "escorpion", archivo: "Escorpion.svg", cant: 1, size: 1 },
         { id: "trabuquete", archivo: "Catapulta.svg", cant: 1, size: 1 },
-        { id: "dragon", archivo: "Dragon.svg", cant: 1, size: 1, ignoraAgua: true, vuela: true },
+        { id: "dragon", archivo: "Dragon.svg", cant: 1, size: 1, vuela: true },
         { id: "rey", archivo: "Rey.svg", cant: 1, size: 1 }
     ]
 };
@@ -81,8 +81,7 @@ function init() {
 }
 
 function getUrl(bando, archivo) {
-    const carpeta = (bando === 'rojo') ? 'Rojo' : 'Negro';
-    return `https://cdn.jsdelivr.net/gh/${CONFIG.user}/${CONFIG.repo}@${CONFIG.branch}/${carpeta}/${archivo}`;
+    return `https://cdn.jsdelivr.net/gh/${CONFIG.user}/${CONFIG.repo}@${CONFIG.branch}/${bando==='rojo'?'Rojo':'Negro'}/${archivo}`;
 }
 
 function createBoard() {
@@ -105,10 +104,9 @@ function createBoard() {
 
 function updateInventories() {
     ['rojo', 'negro'].forEach(army => {
-        const panel = document.getElementById(`inv-${army}`);
         const list = document.getElementById(`list-${army}`);
         const dung = document.getElementById(`dungeon-${army}`);
-        panel.style.visibility = (turnoActual && turnoActual !== army) ? "hidden" : "visible";
+        document.getElementById(`inv-${army}`).style.visibility = (turnoActual && turnoActual !== army) ? "hidden" : "visible";
         list.innerHTML = '';
         CONFIG.piezas.forEach(p => {
             const n = stock[army][p.id];
@@ -128,37 +126,28 @@ function updateInventories() {
     });
 }
 
-// --- MOTOR DE DETECCIÓN DE OBSTÁCULOS ---
-
 function getPieceAt(r, c) {
     const t = document.querySelector(`[data-row="${r}"][data-col="${c}"]`);
     return t ? t.querySelector('.piece-on-board') : null;
 }
 
-function isStructural(r, c) {
-    if (r < 0 || r > 9 || c < 0 || c > 9) return true;
-    if (waterCoords.includes(`${r},${c}`)) return true;
-    const img = getPieceAt(r, c);
-    return (img && (img.dataset.pieceId === 'montana' || img.dataset.pieceId === 'fortaleza'));
-}
-
-function countThreats(targetR, targetC, attackerArmy, draggingImg) {
-    let threats = 0;
+function countOtherThreats(targetR, targetC, attackerArmy, currentDraggingImg) {
+    let support = 0;
     document.querySelectorAll('.piece-on-board').forEach(img => {
-        if (img.dataset.army === attackerArmy && img !== draggingImg) {
+        if (img.dataset.army === attackerArmy && img !== currentDraggingImg && img.style.opacity !== "0") {
             const tr = parseInt(img.parentElement.dataset.row), tc = parseInt(img.parentElement.dataset.col);
             const dr = Math.abs(targetR - tr), dc = Math.abs(targetC - tc);
             const pid = img.dataset.pieceId;
-            if (pid === "chusma" || pid === "lanceros") { if (dr+dc === 1) threats++; }
-            else if (pid === "arqueros") { if (dr===dc && dr>=1 && dr<=2) threats++; }
-            else if (pid === "elefante") { if (dr===0 || dc===0) threats++; }
-            else if (pid === "dragon") { threats++; }
+            if ((pid === "chusma" || pid === "lanceros") && dr+dc === 1) support++;
+            else if (pid === "arqueros" && dr===dc && dr>=1 && dr<=2) support++;
+            else if (pid === "c_pesada" && ((dr===2 && dc===1) || (dr===1 && dc===2))) support++;
+            else if (pid === "c_ligera" && ((dr===3 && dc===1) || (dr===1 && dc===3))) support++;
+            else if (pid === "elefante" && (dr===0 || dc===0)) support++;
+            else if (pid === "dragon") support++;
         }
     });
-    return threats;
+    return support;
 }
-
-// --- GESTIÓN DE MOVIMIENTO ---
 
 function handleDragOver(e) {
     e.preventDefault();
@@ -171,89 +160,78 @@ function handleDragOver(e) {
     const targetImg = getPieceAt(r, c);
 
     if (faseJuego === "despliegue") {
+        esValido = true;
         let minR = !bandoQueEmpezo ? (r < 5 ? 0 : 5) : (mitadesAsignadas[draggingArmy] === 'norte' ? 0 : 5);
         let maxR = !bandoQueEmpezo ? (r < 5 ? 4 : 9) : (mitadesAsignadas[draggingArmy] === 'norte' ? 4 : 9);
-        esValido = true;
         for (let i = 0; i < p.size; i++) for (let j = 0; j < p.size; j++) {
             const tr = r+i, tc = c+j, t = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
             if (!t || t.children.length > 0 || (!p.ignoraAgua && waterCoords.includes(`${tr},${tc}`))) esValido = false;
             if (p.id === "fortaleza" && (tr <= minR || tr >= maxR || tc <= 0 || tc >= 9)) esValido = false;
             else if (p.id === "montana" && (tr < minR || tr > maxR)) esValido = false;
-            else if (p.id !== "fortaleza" && p.id !== "montana" && !zonasDespliegue[draggingArmy].includes(`${tr},${tc}`)) esValido = false;
+            else if (p.id !== "fortaleza" && p.id !== "montana" && !zonasDespliegue[draggingArmy]?.includes(`${tr},${tc}`)) esValido = false;
         }
     } else {
-        // --- LÓGICA DE COMBATE ---
+        // --- COMBATE ---
         if (!draggingOriginTile) return;
         const or = parseInt(draggingOriginTile.dataset.row), oc = parseInt(draggingOriginTile.dataset.col);
         const dr = Math.abs(r - or), dc = Math.abs(c - oc);
         const draggingImg = draggingOriginTile.querySelector('img');
 
-        // 1. COMPROBACIONES DE ATERRIZAJE (Destino)
-        let landingPossible = true;
-        if (this.classList.contains('water') && !p.ignoraAgua) landingPossible = false;
-        if (targetImg) {
-            if (targetImg.dataset.pieceId === 'fortaleza' || targetImg.dataset.pieceId === 'montana') landingPossible = false;
-            if (targetImg.dataset.army === draggingArmy && draggingPieceId !== "lanceros") landingPossible = false;
-            if (targetImg.dataset.pieceId === 'elefante' && targetImg.dataset.army !== draggingArmy) {
-                if (draggingPieceId !== "dragon" && countThreats(r, c, draggingArmy, draggingImg) < 1) landingPossible = false;
+        // REGLA CLAVE PASS: Misma casilla tras primer movimiento = VERDE
+        if (r === or && c === oc) {
+            esValido = true;
+        } else {
+            // Aterrizaje Universal (Nadie aterriza en agua o montaña, excepto Fortaleza)
+            let landOk = true;
+            if (this.classList.contains('water') || (targetImg && targetImg.dataset.pieceId === 'montana')) landOk = false;
+            if (targetImg) {
+                if (targetImg.dataset.pieceId === 'fortaleza') landOk = false;
+                if (targetImg.dataset.army === draggingArmy && draggingPieceId !== "lanceros") landOk = false;
+                if (targetImg.dataset.pieceId === 'elefante' && targetImg.dataset.army !== draggingArmy) {
+                    if (draggingPieceId !== "dragon" && countOtherThreats(r, c, draggingArmy, draggingImg) < 1) landOk = false;
+                }
             }
-        }
 
-        // 2. COMPROBACIONES DE CAMINO (Trayectoria)
-        if (landingPossible) {
-            if (draggingPieceId === "elefante") {
-                if (dr === 0 || dc === 0) { // Movimiento Ortogonal
-                    if (dr + dc > 0) {
-                        let pathClear = true;
-                        const sR = dr === 0 ? 0 : (r > or ? 1 : -1);
-                        const sC = dc === 0 ? 0 : (c > oc ? 1 : -1);
+            if (landOk) {
+                if (draggingPieceId === "dragon") {
+                    if (dr === 0 || dc === 0 || dr === dc) {
+                        esValido = true;
+                        const sR = dr === 0 ? 0 : (r > or ? 1 : -1), sC = dc === 0 ? 0 : (c > oc ? 1 : -1);
                         let tr = or + sR, tc = oc + sC;
                         while (tr !== r || tc !== c) {
-                            if (getPieceAt(tr, tc) || waterCoords.includes(`${tr},${tc}`)) { pathClear = false; break; }
+                            const obs = getPieceAt(tr, tc);
+                            // Dragón vuela sobre agua/montaña, pero NO sobre otras piezas o fortalezas
+                            if (obs && obs.dataset.pieceId !== 'montana') { esValido = false; break; }
                             tr += sR; tc += sC;
                         }
-                        if (pathClear) esValido = true;
                     }
-                }
-            } 
-            else if (draggingPieceId === "arqueros") {
-                if (dr === dc && dr >= 1 && dr <= 2) {
-                    if (dr === 1) esValido = true;
-                    else { // Distancia 2: camino limpio
-                        const mR = (r+or)/2, mC = (c+oc)/2;
-                        if (!getPieceAt(mR, mC) && !waterCoords.includes(`${mR},${mC}`)) esValido = true;
+                } else if (draggingPieceId === "elefante") {
+                    if (dr === 0 || dc === 0) {
+                        esValido = true;
+                        const sR = dr === 0 ? 0 : (r > or ? 1 : -1), sC = dc === 0 ? 0 : (c > oc ? 1 : -1);
+                        let tr = or + sR, tc = oc + sC;
+                        while (tr !== r || tc !== c) { if (getPieceAt(tr, tc) || waterCoords.includes(`${tr},${tc}`)) { esValido = false; break; } tr += sR; tc += sC; }
                     }
-                }
-            }
-            else if (draggingPieceId === "c_pesada" || draggingPieceId === "c_ligera") {
-                const limit = (draggingPieceId === "c_pesada") ? [2, 1] : [3, 1];
-                if ((dr === limit[0] && dc === limit[1]) || (dr === limit[1] && dc === limit[0])) {
-                    let p1B, p2B;
-                    if (draggingPieceId === "c_pesada") {
-                        const sR = (r-or)/2, sC = (c-oc)/2;
+                } else if (draggingPieceId === "arqueros") {
+                    if (dr === dc && dr >= 1 && dr <= 2) {
+                        esValido = true;
                         if (dr === 2) {
-                            p1B = isStructural(or+sR, oc) || isStructural(or+sR*2, oc) || (getPieceAt(or+sR, oc)?.dataset.army !== draggingArmy);
-                            p2B = isStructural(or, c) || isStructural(or+sR, c) || (getPieceAt(or, c)?.dataset.army !== draggingArmy);
-                        } else {
-                            p1B = isStructural(or, oc+sC) || isStructural(or, oc+sC*2) || (getPieceAt(or, oc+sC)?.dataset.army !== draggingArmy);
-                            p2B = isStructural(r, oc) || isStructural(r, oc+sC) || (getPieceAt(r, oc)?.dataset.army !== draggingArmy);
+                            const mR = (r+or)/2, mC = (c+oc)/2;
+                            if (getPieceAt(mR, mC) || waterCoords.includes(`${mR},${mC}`)) esValido = false;
                         }
-                    } else { // Ligera simplificada
-                        p1B = isStructural(or + Math.round((r-or)/2), oc + Math.round((c-oc)/2)); p2B = false;
                     }
-                    if (!p1B || !p2B) esValido = true;
+                } else if (draggingPieceId === "c_pesada" || draggingPieceId === "c_ligera") {
+                    const shape = (draggingPieceId === "c_pesada") ? [2, 1] : [3, 1];
+                    if ((dr === shape[0] && dc === shape[1]) || (dr === shape[1] && dc === shape[0])) esValido = true;
+                } else if (dr + dc === 1) {
+                    if (chusmasMovidasEsteTurno === 0 || draggingPieceId === "chusma") {
+                        if (!(draggingPieceId === "chusma" && chusmasMovidasEsteTurno === 1 && draggingImg.dataset.groupId === ultimaChusmaGid)) esValido = true;
+                    }
                 }
             }
-            else if (dr + dc === 1) { // Piezas de 1 casilla
-                if (chusmasMovidasEsteTurno === 0 || draggingPieceId === "chusma") {
-                    if (!(draggingPieceId === "chusma" && chusmasMovidasEsteTurno === 1 && draggingImg.dataset.groupId === ultimaChusmaGid)) esValido = true;
-                }
-            }
-            else if (r === or && c === oc) esValido = true;
         }
     }
 
-    // APLICAR GHOSTING
     for (let i = 0; i < p.size; i++) for (let j = 0; j < p.size; j++) {
         const t = document.querySelector(`[data-row="${r+i}"][data-col="${c+j}"]`);
         if (t) t.classList.add(esValido ? 'valid-drop' : 'invalid-ghost');
@@ -280,9 +258,13 @@ function handleDrop(e) {
         stock[draggingArmy][draggingPieceId]--;
         updateInventories();
     } else {
+        const or = parseInt(draggingOriginTile.dataset.row), oc = parseInt(draggingOriginTile.dataset.col);
+        // PASS MECHANISM
+        if (r === or && c === oc) { if (chusmasMovidasEsteTurno > 0) finalizarTurnoCombate(); return; }
+
         const targetImg = getPieceAt(r, c);
         const myImg = draggingOriginTile.querySelector('img');
-        let captura = false, permuta = false;
+        let captura = false;
 
         if (targetImg) {
             if (targetImg.dataset.army !== draggingArmy) {
@@ -290,36 +272,41 @@ function handleDrop(e) {
                 document.querySelectorAll(`[data-group-id="${targetImg.dataset.groupId}"]`).forEach(el => el.remove());
                 captura = true;
             } else if (draggingPieceId === "lanceros") {
-                draggingOriginTile.appendChild(targetImg); permuta = true;
+                draggingOriginTile.appendChild(targetImg);
             }
         }
-        if (r === parseInt(draggingOriginTile.dataset.row) && c === parseInt(draggingOriginTile.dataset.col)) {
-            if (chusmasMovidasEsteTurno > 0) finalizarTurnoCombate(); return;
-        }
         this.appendChild(myImg);
-        if (captura || permuta || draggingPieceId !== "chusma") finalizarTurnoCombate();
+        if (captura || draggingPieceId !== "chusma") finalizarTurnoCombate();
         else {
             chusmasMovidasEsteTurno++; ultimaChusmaGid = myImg.dataset.groupId;
-            const chT = document.querySelectorAll(`.piece-on-board[data-army="${turnoActual}"][data-piece-id="chusma"]`).length;
-            if (chusmasMovidasEsteTurno >= 2 || chT < 2) finalizarTurnoCombate();
-            else document.getElementById('status-msg').innerText = "1/2 Turno: Mueve otra Chusma.";
+            const numCh = document.querySelectorAll(`.piece-on-board[data-army="${turnoActual}"][data-piece-id="chusma"]`).length;
+            if (chusmasMovidasEsteTurno >= 2 || numCh < 2) finalizarTurnoCombate();
+            else document.getElementById('status-msg').innerText = "1/2 Turno gastado. Mueve OTRA Chusma o suelta aquí para pasar.";
         }
     }
     document.querySelectorAll('.tile').forEach(t => t.classList.remove('valid-drop', 'invalid-ghost'));
 }
 
-function checkAsedio() {
-    msgAsedio = "";
-    ['rojo', 'negro'].forEach(army => {
-        let atacantes = 0;
-        if (zonasDespliegue[army]) {
-            zonasDespliegue[army].forEach(coord => {
-                const [tr,tc] = coord.split(','), img = getPieceAt(tr, tc);
-                if(img && img.dataset.army !== army) atacantes++;
-            });
-            if (atacantes >= 2) msgAsedio += ` ¡ASEDIO A ${army.toUpperCase()}! `;
-        }
-    });
+function handleFortressClick(e) {
+    if (faseJuego !== "despliegue") return;
+    const img = e.currentTarget.querySelector('.piece-on-board');
+    if (!img || img.dataset.pieceId !== 'fortaleza' || img.dataset.army !== turnoActual) return;
+    const army = img.dataset.army;
+    if (stock[army].montana > 0 || (zonasDespliegue[army] && zonasDespliegue[army].some(coord => {
+        const [tr, tc] = coord.split(','), t = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
+        return t.children.length === 0 && !t.classList.contains('water');
+    }))) return alert("Completa el despliegue.");
+
+    document.querySelectorAll('.tile').forEach(t => t.classList.remove('deploy-zone'));
+
+    if (army === bandoQueEmpezo) {
+        document.querySelectorAll(`.piece-on-board[data-army="${army}"]`).forEach(i => i.style.opacity = "0");
+        turnoActual = (army === 'rojo') ? 'negro' : 'rojo';
+    } else {
+        faseJuego = "combate"; turnoActual = bandoQueEmpezo;
+        document.querySelectorAll('.piece-on-board').forEach(i => i.style.opacity = "1");
+    }
+    updateInventories();
 }
 
 function createPieceImg(army, pid, gid) {
@@ -338,24 +325,9 @@ function createPieceImg(army, pid, gid) {
 }
 
 function finalizarTurnoCombate() {
-    checkAsedio(); chusmasMovidasEsteTurno = 0; ultimaChusmaGid = null;
+    chusmasMovidasEsteTurno = 0; ultimaChusmaGid = null;
     turnoActual = (turnoActual === 'rojo') ? 'negro' : 'rojo';
-    document.getElementById('status-msg').innerText = `Turno del ${turnoActual.toUpperCase()}${msgAsedio}`;
-    updateInventories();
-}
-
-function handleFortressClick(e) {
-    if (faseJuego !== "despliegue") return;
-    const img = e.currentTarget.querySelector('.piece-on-board');
-    if (!img || img.dataset.pieceId !== 'fortaleza' || img.dataset.army !== turnoActual) return;
-    const army = img.dataset.army;
-    if (stock[army].montana > 0 || zonasDespliegue[army].some(coord => {
-        const [r, c] = coord.split(','), t = document.querySelector(`[data-row="${r}"][data-col="${c}"]`);
-        return t.children.length === 0 && !t.classList.contains('water');
-    })) return alert("Completa el despliegue.");
-    document.querySelectorAll(`.piece-on-board[data-army="${army}"]`).forEach(i => i.style.opacity = "0");
-    if (army === bandoQueEmpezo) turnoActual = (army === 'rojo') ? 'negro' : 'rojo';
-    else { faseJuego = "combate"; turnoActual = bandoQueEmpezo; document.querySelectorAll('.piece-on-board').forEach(i => i.style.opacity = "1"); }
+    document.getElementById('status-msg').innerText = `Turno del ${turnoActual.toUpperCase()}`;
     updateInventories();
 }
 
@@ -363,4 +335,26 @@ function handleRemove(e) {
     e.preventDefault(); if (faseJuego !== "despliegue") return;
     const img = e.currentTarget.querySelector('.piece-on-board');
     if (!img) return;
-    const army =
+    const army = img.dataset.army, pid = img.dataset.pieceId, gid = img.dataset.groupId;
+    if (pid === 'fortaleza') { fortalezaColocada[army] = false; if(army === bandoQueEmpezo) { bandoQueEmpezo = null; turnoActual = null; } }
+    stock[army][pid]++;
+    document.querySelectorAll(`[data-group-id="${gid}"]`).forEach(el => el.remove());
+    updateInventories();
+}
+
+function actualizarZonas(r, c, army) {
+    const coords = [], mit = mitadesAsignadas[army], minR = (mit === 'norte') ? 0 : 5, maxR = (mit === 'norte') ? 4 : 9;
+    for (let i = r - 1; i <= r + 2; i++) for (let j = c - 1; j <= c + 2; j++) {
+        if (!(i >= r && i <= r + 1 && j >= c && j <= c + 1) && i >= minR && i <= maxR && j >= 0 && j < 10) {
+            coords.push(`${i},${j}`);
+            const t = document.querySelector(`[data-row="${i}"][data-col="${j}"]`);
+            if (t && !t.classList.contains('water')) t.classList.add('deploy-zone');
+        }
+    }
+    zonasDespliegue[army] = coords;
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
