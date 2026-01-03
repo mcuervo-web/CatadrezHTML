@@ -3,7 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Cotadrez - Interfaz v1.1</title>
+    <title>Cotadrez</title>
+    <link rel="icon" type="image/svg+xml"
+        href="https://cdn.jsdelivr.net/gh/mcuervo-web/Cotadrez@main/Negro/Castillo.svg">
     <style>
         :root {
             --c-red: #e74c3c;
@@ -253,27 +255,6 @@
             transform: scale(1.05);
         }
 
-        // Función auxiliar para mostrar mensajes temporales
-        function showNotification(msg, isError=false) {
-            const bar=document.getElementById('status-bar');
-            bar.innerText=msg;
-            bar.style.color=isError ? '#e74c3c': '#f1c40f'; // Rojo si es error, Dorado si es info
-
-            // Efecto visual: parpadeo rápido
-            bar.style.opacity=0;
-            setTimeout(()=> bar.style.opacity=1, 100);
-
-            // Volver al mensaje por defecto tras 3 segundos
-            if (isError) {
-                setTimeout(()=> {
-                        bar.innerText="Modo Dios: Arrastra libremente las piezas al tablero";
-                        bar.style.color='#f1c40f';
-                    }
-
-                    , 3000);
-            }
-        }
-
         /* GHOSTING (Feedback Visual) */
         .ghost-valid {
             background-color: rgba(46, 204, 113, 0.6) !important;
@@ -351,6 +332,8 @@
         let draggingMeta = null; // Guardará qué estamos moviendo
 
         let fortressPos = { rojo: null, negro: null };
+
+        let besiegedArmy = null; // Guardará 'rojo' o 'negro' durante la resolución del asedio
 
         // Almacena los prisioneros capturados POR cada jugador
         let dungeons = { rojo: [], negro: [] };
@@ -725,6 +708,76 @@
             draggingMeta = null;
 
             // ============================================================
+            //  FASE ESPECIAL: RESOLUCIÓN DE ASEDIO (SACRIFICIO)
+            // ============================================================
+            if (gameState === 'siege-resolution') {
+                // 1. Validaciones de Seguridad
+                if (data.army !== besiegedArmy) return; // Solo puede mover el asediado
+                if (data.source !== 'reserve') {
+                    showNotification("⚠️ Debes sacar una pieza de la RESERVA para romper el asedio.", true); return;
+                }
+
+                // 2. Validar Zona de Salida (Anillo de Fortaleza)
+                const fOrigin = fortressPos[data.army];
+                if (!isInExitZone(r, c, fOrigin)) {
+                    showNotification("🚫 Solo puedes desplegar junto a tu Fortaleza.", true); return;
+                }
+                if (logicBoard[r][c] !== null || terrain[r][c] === 'water') {
+                    showNotification("🚫 Casilla inválida u ocupada.", true); return;
+                }
+
+                // 3. REGLA DE ORO: ¿QUÉ PIEZA PUEDO SALVAR?
+                // "El Rey si está dentro, u otra si el Rey está fuera"
+                const myReserve = reserves[data.army];
+                const kingInReserve = myReserve['rey'] > 0;
+
+                if (kingInReserve && data.type !== 'rey') {
+                    showNotification("👑 ¡El Rey está en peligro! Debes salvar al REY obligatoriamente.", true);
+                    return;
+                }
+
+                // --- EJECUCIÓN DEL SACRIFICIO ---
+
+                // A. Salvar la pieza elegida (Al tablero)
+                if (reserves[data.army][data.type] > 0) {
+                    reserves[data.army][data.type]--;
+                    logicBoard[r][c] = { army: data.army, type: data.type };
+                }
+
+                // B. CAPTURA MASIVA DEL RESTO (A la mazmorra del atacante)
+                const attackerArmy = (besiegedArmy === 'rojo') ? 'negro' : 'rojo';
+                let capturedCount = 0;
+
+                for (const [type, count] of Object.entries(reserves[data.army])) {
+                    if (count > 0) {
+                        // Movemos todas las unidades restantes a la mazmorra enemiga
+                        for (let i = 0; i < count; i++) {
+                            dungeons[attackerArmy].push({ type: type, army: besiegedArmy });
+                            capturedCount++;
+                        }
+                        // Vaciamos la reserva
+                        reserves[data.army][type] = 0;
+                    }
+                }
+
+                // C. FINALIZAR ASEDIO Y VOLVER A LA NORMALIDAD
+                showNotification(`🔥 Asedio roto. ${capturedCount} unidades han sido capturadas en la huida.`);
+
+                gameState = 'playing';
+                besiegedArmy = null;
+
+                // Cambio de turno (ahora le toca al atacante otra vez, o al defensor según prefieras)
+                // Lo lógico tras un despliegue es cambiar turno:
+                turnColor = attackerArmy;
+
+                renderBoard();
+                updateInventories();
+                updateDungeons();
+                return; // Importante: Salir para no ejecutar lógica normal
+            }
+
+
+            // ============================================================
             //  FASE 1: MODO JUEGO (SANDBOX / BATALLA)
             // ============================================================
             if (gameState === 'playing') {
@@ -901,20 +954,28 @@
 
         function updateDungeons() {
             ['rojo', 'negro'].forEach(jailerArmy => {
-                // jailerArmy = Quien tiene la llave (Dueño de la mazmorra)
                 const container = document.getElementById(`grave-${jailerArmy}`);
                 if (!container) return;
                 container.innerHTML = '';
 
+                // Conjunto para recordar qué tipos de piezas ya hemos pintado en esta vuelta
+                const drawnTypes = new Set();
+
                 dungeons[jailerArmy].forEach((captive, index) => {
+                    // Si ya hemos dibujado una pieza de este tipo, la saltamos (agrupación visual)
+                    if (drawnTypes.has(captive.type)) return;
+
+                    // Si es nueva, la registramos y la dibujamos
+                    drawnTypes.add(captive.type);
+
                     const img = document.createElement('img');
                     img.src = getImgUrl(captive.army, captive.type);
                     img.title = `Prisionero: ${captive.type.toUpperCase()}`;
 
-                    // LÓGICA DE RESCATE
-                    // Si estamos jugando, es mi turno, y el prisionero es MÍO
+                    // LÓGICA DE RESCATE (Solo aplicable a la pieza visible)
                     if (gameState === 'playing' && captive.army === turnColor && jailerArmy !== turnColor) {
                         img.classList.add('rescue-target');
+                        // Al hacer click, rescatamos ESTA instancia concreta (index)
                         img.onclick = () => attemptRescue(jailerArmy, index, captive);
                         img.title = "CLICK PARA RESCATAR (Requiere tropas en la fortaleza enemiga)";
                     }
@@ -950,7 +1011,7 @@
             updateInventories();
         }
 
-function attemptRescue(jailerArmy, captiveIndex, captive) {
+        function attemptRescue(jailerArmy, captiveIndex, captive) {
             // 1. Identificar al enemigo y su fortaleza
             const myArmy = turnColor;
             const enemyFortPos = fortressPos[jailerArmy]; // La fortaleza del carcelero
@@ -960,14 +1021,14 @@ function attemptRescue(jailerArmy, captiveIndex, captive) {
             // 2. Buscar "El Equipo de Rescate"
             // (Mis piezas que están en el anillo de salida de la fortaleza enemiga)
             let rescueTeam = [];
-            
+
             // Recorremos el tablero buscando mis piezas en zona hostil
             for (let r = 0; r < 10; r++) {
                 for (let c = 0; c < 10; c++) {
                     const piece = logicBoard[r][c];
                     if (piece && piece.army === myArmy) {
                         if (isInExitZone(r, c, enemyFortPos)) {
-                            rescueTeam.push({r, c, type: piece.type});
+                            rescueTeam.push({ r, c, type: piece.type });
                         }
                     }
                 }
@@ -980,7 +1041,7 @@ function attemptRescue(jailerArmy, captiveIndex, captive) {
             }
 
             // 4. EJECUTAR EL RESCATE (Todo vuelve a la reserva)
-            
+
             // A. Recuperar al prisionero
             dungeons[jailerArmy].splice(captiveIndex, 1); // Sacar de mazmorra
             reserves[myArmy][captive.type]++; // Volver a reserva
@@ -993,21 +1054,31 @@ function attemptRescue(jailerArmy, captiveIndex, captive) {
 
             // 5. FINALIZAR
             const msg = `🚁 ¡RESCATE ÉPICO! ${captive.type.toUpperCase()} y ${rescueTeam.length} comandos han regresado a casa.`;
-            
-            // Cambio de turno tras la operación
-            turnColor = (turnColor === 'rojo') ? 'negro' : 'rojo';
-            
-            showNotification(msg);
-            
-            // Actualizar todo
+
+            setTimeout(showNotification(msg), 2000);
+
+            gameState = 'siege-resolution';
+            besiegedArmy = jailerArmy; // El enemigo pasa a estar asediado
+
+            // 2. Le damos el turno para que tome su decisión forzosa
+            turnColor = besiegedArmy;
+
+            // 3. Feedback
+            showNotification(`⚠️ ¡ASEDIO! ${besiegedArmy.toUpperCase()} debe salvar una pieza. El resto morirá.`);
+
             renderBoard();
             updateInventories();
             updateDungeons();
         }
 
         function getStatusText() {
-            // Si el juego acabó, el mensaje es sagrado.
             if (gameState === 'game-over') return document.getElementById('status-bar').innerText;
+
+            // --- NUEVO ESTADO ---
+            if (gameState === 'siege-resolution') {
+                return `🔥 ¡ASEDIO! ${turnColor.toUpperCase()} debe desplegar una pieza (Rey prioritario).`;
+            }
+            // --------------------
 
             if (gameState === 'init') return "Elige tu destino: Arrastra una Fortaleza para empezar.";
             if (gameState === 'deploy-p1') return `Fase Despliegue: JUGADOR 1 (${p1Color.toUpperCase()})`;
