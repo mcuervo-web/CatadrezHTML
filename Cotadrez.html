@@ -93,6 +93,30 @@
             gap: 8px;
         }
 
+
+        /* Resaltado del Anillo de Fortaleza */
+        .highlight-ring {
+            box-shadow: inset 0 0 0 3px #2ecc71 !important;
+            /* Borde verde interior */
+            /* background-color: rgba(46, 204, 113, 0.15) !important; */
+            /* Fondo sutil */
+            animation: pulse-ring 2s infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% {
+                box-shadow: inset 0 0 0 3px #2ecc71;
+            }
+
+            50% {
+                box-shadow: inset 0 0 0 1px #2ecc71;
+            }
+
+            100% {
+                box-shadow: inset 0 0 0 3px #2ecc71;
+            }
+        }
+
         /* Sección Inferior: Mazmorra */
         .dungeon-section {
             height: 180px;
@@ -391,9 +415,29 @@
         }
 
         // --- 3. RENDERIZADO BÁSICO ---
+
         function renderBoard() {
             const b = document.getElementById('board');
             b.innerHTML = '';
+
+            // --- COLOR DEL BORDE SEGÚN TURNO ---
+            let borderColor = '#34495e'; // Color neutro por defecto (Azul grisáceo oscuro)
+
+            // Definimos el color oscuro manual para que destaque sobre el neutro
+            const darkBorder = '#111111'; // <--- CORRECCIÓN: Gris casi negro
+
+            if (gameState === 'deploy-p1') {
+                borderColor = (p1Color === 'rojo') ? 'var(--c-red)' : darkBorder;
+            }
+            else if (gameState === 'deploy-p2') {
+                borderColor = (p2Color === 'rojo') ? 'var(--c-red)' : darkBorder;
+            }
+            else if (gameState === 'playing' || gameState === 'siege-resolution') {
+                borderColor = (turnColor === 'rojo') ? 'var(--c-red)' : darkBorder;
+            }
+
+            b.style.borderColor = borderColor;
+            // ------------------------------------------
 
             for (let r = 0; r < 10; r++) {
                 for (let c = 0; c < 10; c++) {
@@ -515,14 +559,15 @@
                         const item = document.createElement('div');
                         item.className = 'inv-item';
 
-                        // --- CAMBIO AQUÍ: Hacemos la imagen arrastrable ---
+                        // --- CAMBIO AQUÍ: Añadimos ondragend ---
                         const img = document.createElement('img');
                         img.src = getImgUrl(army, type);
-                        img.draggable = true; // Permite arrastrar
+                        img.draggable = true;
 
-                        // Conectamos con el handler 'reserve'
                         img.ondragstart = (e) => handleDragStart(e, 'reserve', army, type);
-                        // ------------------------------------------------
+                        // NUEVO: Limpiar al soltar (aunque sea fuera)
+                        img.ondragend = () => clearRingHighlights();
+                        // ----------------------------------------
 
                         item.appendChild(img);
 
@@ -559,6 +604,12 @@
             const data = { source, army, type, originR: r, originC: c };
             e.dataTransfer.setData('text/plain', JSON.stringify(data));
             e.dataTransfer.effectAllowed = 'move';
+
+            // --- NUEVO: RESALTAR ANILLO SI VIENE DE RESERVA ---
+            if (source === 'reserve' && type !== 'montana') {
+                highlightFortressRing(army);
+            }
+
         }
 
         // 2. Permitir soltar (El navegador bloquea por defecto, hay que prevenirlo)
@@ -700,6 +751,7 @@
 
         function handleDrop(e, r, c) {
             e.preventDefault();
+            clearRingHighlights();
             clearGhosts();
 
             const rawData = e.dataTransfer.getData('text/plain');
@@ -1086,6 +1138,33 @@
             if (gameState === 'playing') return `¡Batalla en curso! Turno de ${turnColor.toUpperCase()}`;
             return "Cotadrez";
         }
+
+        // Pinta el anillo de salida de la fortaleza del ejército indicado
+        function highlightFortressRing(army) {
+            const fPos = fortressPos[army];
+            if (!fPos) return;
+
+            // Recorremos todo el tablero (ineficiente pero seguro y rápido en 10x10)
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 10; c++) {
+                    // Si es zona de salida, está vacía y no es agua
+                    if (isInExitZone(r, c, fPos)) {
+                        if (logicBoard[r][c] === null && terrain[r][c] !== 'water') {
+                            const tile = document.querySelector(`.tile[data-r="${r}"][data-c="${c}"]`);
+                            if (tile) tile.classList.add('highlight-ring');
+                        }
+                    }
+                }
+            }
+        }
+
+        // Limpia el resaltado del anillo
+        function clearRingHighlights() {
+            document.querySelectorAll('.highlight-ring').forEach(el => {
+                el.classList.remove('highlight-ring');
+            });
+        }
+
 
     </script>
 </body>
