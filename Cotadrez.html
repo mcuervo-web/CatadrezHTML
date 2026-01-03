@@ -457,6 +457,9 @@
 
         let shotHighlights = []; // Guardará las coordenadas {r,c} del último disparo para mantenerlas visibles
 
+        let isNotificationActive = false; // Bloqueo para mensajes temporales
+        let notificationTimer = null;     // Para limpiar el temporizador si se solapan mensajes
+
         let besiegedArmy = null; // Guardará 'rojo' o 'negro' durante la resolución del asedio
 
         // CAMBIO: DEJAMOS DE USAR UN BOOLEANO SIMPLE
@@ -479,26 +482,6 @@
         let p2Color = null;
         let p1Territory = null; // 'north' (filas 0-4) o 'south' (filas 5-9)
         let turnColor = null; // 'rojo' o 'negro'
-
-        function showNotification(msg, isError = false) {
-            const bar = document.getElementById('status-bar');
-            bar.innerText = msg;
-
-            // Si es error, rojo estándar. Si es info, dorado. 
-            // PERO si estamos en CRÍTICO, mantenemos la clase parpadeante si no es un error momentáneo.
-            bar.classList.remove('status-critical'); // Quitamos parpadeo temporalmente para leer el mensaje
-            bar.style.color = isError ? '#e74c3c' : '#f1c40f';
-
-            bar.style.opacity = 0;
-            setTimeout(() => bar.style.opacity = 1, 100);
-
-            // Al terminar la notificación, volvemos al estado real del juego
-            setTimeout(() => {
-                updateStatusBar(); // <--- ESTA ES LA CLAVE: Restaurar estado crítico si existe
-                bar.style.opacity = 1; // Asegurar visibilidad
-            }, 3000);
-        }
-
 
         // --- 2. INICIALIZACIÓN ---
         function init() {
@@ -1223,17 +1206,18 @@
                         if (count >= 2) siegeCreated = true;
                     }
 
-                // --- C. BONUS CHUSMA ---
-                // Añadimos "&& !siegeCreated" para que el asedio corte el turno igual que una captura
-                if (gameState === 'playing' && data.type === 'chusma' && !wasCapture && gameState !== 'siege-confirmation' && !siegeCreated) {
-                    gameState = 'playing-chusma-bonus';
-                    chusmaMovedCoords = { r: r, c: c };
-                    showNotification("⚡ ¡Marcha ligera! Mueve otra Chusma o haz click en esta para terminar.");
-                    renderBoard(); updateInventories(); updateDungeons();
-                    checkTurnStatus();
-                    return;
+                    // --- C. BONUS CHUSMA ---
+                    // Añadimos "&& !siegeCreated" para que el asedio corte el turno igual que una captura
+                    if (gameState === 'playing' && data.type === 'chusma' && !wasCapture && gameState !== 'siege-confirmation' && !siegeCreated) {
+                        gameState = 'playing-chusma-bonus';
+                        chusmaMovedCoords = { r: r, c: c };
+                        // Ahora este mensaje SÍ se verá gracias al bloqueo
+                        showNotification("⚡ ¡Marcha ligera! Mueve otra Chusma o haz click en esta para terminar.");
+                        renderBoard(); updateInventories(); updateDungeons();
+                        checkTurnStatus();
+                        return;
+                    }
                 }
-            }
 
                 // --- C. FINAL DEL TURNO Y VERIFICACIÓN DE ASEDIO ---
 
@@ -1285,7 +1269,8 @@
 
                         /* isBesieged = false; */
 
-                        showNotification(`⚔️ ASEDIO LISTO: Pulsa la Fortaleza enemiga para ejecutar o mueve una pieza para cancelar.`);
+                        /* showNotification(`⚔️ ASEDIO LISTO: Pulsa la Fortaleza enemiga para ejecutar o mueve una pieza para cancelar.`); */
+
                         renderBoard(); updateInventories(); updateDungeons();
                         return;
                     }
@@ -1295,7 +1280,8 @@
                 turnColor = attackerArmy;
                 gameState = 'playing';
                 chusmaMovedCoords = null;
-                showNotification(`Turno ${getArmyName(turnColor)}`);
+
+                /* showNotification(`Turno ${getArmyName(turnColor)}`); */
 
                 // CAMBIO DE ORDEN: Primero calculamos el estado (para saber si hay que parpadear)
                 checkTurnStatus();
@@ -1818,7 +1804,8 @@
             gameState = 'playing';
             chusmaMovedCoords = null;
 
-            showNotification(`Turno ${getArmyName(turnColor)}`);
+            /* showNotification(`Turno ${getArmyName(turnColor)}`); */
+            
             renderBoard();
             updateInventories();
             checkTurnStatus();
@@ -2109,14 +2096,53 @@
         }
 
         // Actualiza la barra de estado gestionando prioridades y colores
-        function updateStatusBar() {
+        function showNotification(msg, isError = false) {
             const bar = document.getElementById('status-bar');
+
+            // 1. ACTIVAR BLOQUEO DE ESTADO
+            isNotificationActive = true;
+
+            bar.innerText = msg;
+            bar.classList.remove('status-critical');
+            bar.style.color = isError ? '#e74c3c' : '#f1c40f';
+
+            // Animación suave
+            bar.style.opacity = 0;
+            setTimeout(() => bar.style.opacity = 1, 50);
+
+            // 2. GESTIÓN DEL TEMPORIZADOR (Reiniciar si ya había uno)
+            if (notificationTimer) clearTimeout(notificationTimer);
+
+            notificationTimer = setTimeout(() => {
+                isNotificationActive = false; // Liberar bloqueo
+                updateStatusBar();            // Restaurar estado real del juego
+                bar.style.opacity = 1;
+                notificationTimer = null;
+            }, 3000);
+        }
+
+function updateStatusBar() {
+            const bar = document.getElementById('status-bar');
+            
+            // Calculamos si la situación es CRÍTICA
+            // AÑADIDO: 'siege-prisoner-select' para que no parpadee al elegir prisionero
+            const isCritical = (
+                gameState === 'siege-resolution' || 
+                gameState === 'siege-confirmation' ||
+                gameState === 'siege-prisoner-select' || 
+                siegeStatus[turnColor] === true || 
+                isCheck
+            );
+
+            // SISTEMA DE PRIORIDADES:
+            if (isNotificationActive && !isCritical) return;
+
             const text = getStatusText();
             bar.innerText = text;
 
-            // ACTUALIZADO: Usamos siegeStatus del turno actual
-            if (gameState === 'siege-resolution' || isCheck || siegeStatus[turnColor]) {
+            if (isCritical) {
                 bar.classList.add('status-critical');
+                bar.style.opacity = 1; 
             } else {
                 bar.classList.remove('status-critical');
                 if (!bar.style.color || bar.style.color === 'rgb(231, 76, 60)') {
@@ -2271,11 +2297,13 @@
 
             // CASO ESTÁNDAR: Puede salvar (o debe salvar al Rey)
             if (hasReserves) {
-                let msg = wasExchange
+
+                /* let msg = wasExchange
                     ? `🚨 FORTALEZA CAÍDA: ${victimArmy.toUpperCase()}, salva una unidad.`
                     : `👑 ¡PELIGRO CRÍTICO! ${victimArmy.toUpperCase()}, DEBES SALVAR AL REY (El resto será capturado).`;
 
-                showNotification(msg);
+                showNotification(msg); */
+
                 gameState = 'siege-resolution';
                 besiegedArmy = victimArmy;
                 updateStatusBar();
@@ -2299,7 +2327,9 @@
                 // CASO A: HAY RESCATE REAL -> EL ATACANTE ELIGE
                 turnColor = attackerArmy;
                 gameState = 'siege-prisoner-select';
-                showNotification(`⚔️ ASEDIO ÉPICO: ${attackerArmy.toUpperCase()}, elige a quién rescatar.`);
+                
+                /* showNotification(`⚔️ ASEDIO ÉPICO: ${attackerArmy.toUpperCase()}, elige a quién rescatar.`); */
+                
                 renderBoard(); updateInventories(); updateDungeons();
             } else {
                 // CASO B: NO HAY PRISIONEROS -> RESOLUCIÓN DIRECTA
