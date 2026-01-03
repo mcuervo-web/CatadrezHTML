@@ -121,6 +121,22 @@
             overflow-y: auto;
         }
 
+        /* Estilo para las piezas dentro de la mazmorra */
+        .dungeon-list img {
+            width: 40px;
+            height: 40px;
+            margin: 2px;
+            filter: grayscale(10%) opacity(0.7);
+            /* Efecto "prisionero" */
+            transition: all 0.3s ease;
+        }
+
+        .dungeon-list img:hover {
+            filter: grayscale(0%) opacity(1);
+            transform: scale(1.2);
+            cursor: help;
+        }
+
         /* Items del Inventario (Sin recuadro, icono grande) */
         .inv-item {
             width: 70px;
@@ -327,6 +343,9 @@
 
         let fortressPos = { rojo: null, negro: null };
 
+        // Almacena los prisioneros capturados POR cada jugador
+        let dungeons = { rojo: [], negro: [] };
+
         // Estado del juego: 'init', 'deploy-p1', 'deploy-p2', 'playing'
         let gameState = 'init';
         let p1Color = null;
@@ -368,6 +387,7 @@
             initWater();
             renderBoard();
             updateInventories();
+            updateDungeons();
             document.getElementById('status-bar').innerText = getStatusText();
         }
         function initWater() {
@@ -390,61 +410,65 @@
                     tile.dataset.r = r;
                     tile.dataset.c = c;
 
-                    // --- CAMBIO 1: La casilla escucha eventos de soltar ---
                     tile.ondragover = (e) => handleDragOver(e, r, c);
                     tile.ondrop = (e) => handleDrop(e, r, c);
-                    // ----------------------------------------------------
 
                     if (terrain[r][c] === 'water') {
                         tile.classList.add('water');
                     }
 
-                    // Pintar pieza si existe en la matriz lógica
+                    // Pintar pieza
                     const piece = logicBoard[r][c];
-                    // --- LOGICA DE VISIBILIDAD (NIEBLA) ---
                     let isVisible = true;
-                    // Si es turno de J2, ocultamos TODO lo de J1 (Unidades, Fortalezas y Montañas)
-                    // Añadimos 'piece &&' al principio para asegurar que hay pieza antes de mirar su color
+
+                    // Niebla de Guerra
                     if (piece && gameState === 'deploy-p2' && piece.army === p1Color) {
                         isVisible = false;
                     }
+
                     if (piece && isVisible) {
                         const img = document.createElement('img');
                         img.src = getImgUrl(piece.army, piece.type);
                         img.className = 'piece';
 
-                        // --- LOGICA DE CAMBIO DE TURNO (CLIC EN FORTALEZA) ---
+                        // 1. GESTIÓN DE ARRASTRE (Primero definimos si se mueve)
+                        let canDrag = true;
+                        if (piece.type === 'fortaleza') canDrag = false;
+                        if (gameState === 'playing' && piece.type === 'montana') canDrag = false;
+                        if (gameState.includes('deploy')) {
+                            const myColor = (gameState === 'deploy-p1') ? p1Color : p2Color;
+                            if (piece.army !== myColor) canDrag = false;
+                        }
+
+                        img.draggable = canDrag;
+
+                        // Si se puede arrastrar, asignamos el evento
+                        if (canDrag) {
+                            img.ondragstart = (e) => handleDragStart(e, 'board', piece.army, piece.type, r, c);
+                            img.style.cursor = "grab"; // Cursor de mano abierta
+                        } else {
+                            img.style.cursor = "default"; // Cursor normal por defecto
+                        }
+
+                        // 2. GESTIÓN DE CLICS (Prioridad sobre el arrastre)
+                        // Si es una fortaleza y es el turno correcto, la hacemos pulsable
                         if (piece.type === 'fortaleza') {
-                            // Si soy J1 y es mi turno -> Click para terminar
                             if (gameState === 'deploy-p1' && piece.army === p1Color) {
-                                img.style.cursor = "pointer"; // Indicador visual
-                                img.title = "Click para terminar despliegue y ocultar tropas";
+                                img.style.cursor = "pointer"; // FORZAMOS cursor de dedo
                                 img.onclick = () => finishTurnP1();
                             }
-                            // Si soy J2 y es mi turno -> Click para empezar
                             else if (gameState === 'deploy-p2' && piece.army === p2Color) {
-                                img.style.cursor = "pointer";
-                                img.title = "Click para revelar mapa y empezar";
+                                img.style.cursor = "pointer"; // FORZAMOS cursor de dedo
                                 img.onclick = () => finishTurnP2();
                             }
                         }
 
-                        // Bloquear arrastre de piezas enemigas
-                        img.draggable = true;
-                        if (gameState.includes('deploy')) {
-                            const myColor = (gameState === 'deploy-p1') ? p1Color : p2Color;
-                            if (piece.army !== myColor) img.draggable = false;
-                        }
-
-                        img.ondragstart = (e) => handleDragStart(e, 'board', piece.army, piece.type, r, c);
                         tile.appendChild(img);
                     }
                     b.appendChild(tile);
                 }
             }
         }
-
-
 
         // Devuelve 'north' (filas 0-4) o 'south' (filas 5-9)
         function getTerritory(r) {
@@ -524,24 +548,27 @@
 
         // --- 4. LÓGICA DE ARRASTRAR Y SOLTAR ---
 
-        // 1. Al empezar a arrastrar (desde Inventario o Tablero)
         function handleDragStart(e, source, army, type, r = null, c = null) {
 
             if (gameState === 'playing') {
+                // Si el juego ha terminado, nadie mueve nada
+                if (gameState === 'game-over') { e.preventDefault(); return; }
+
                 if (army !== turnColor) {
-                    e.preventDefault(); // Impide arrastrar
+                    e.preventDefault(); // Impide arrastrar si no es tu turno
                     return;
                 }
             }
 
-            // 1. Guardamos metadatos en variable global para el Ghosting
-            draggingMeta = { type: type, army: army };
+            // 1. Guardamos metadatos (AÑADIDO: source)
+            draggingMeta = { type: type, army: army, source: source };
 
             // 2. Datos estándar para el Drop
             const data = { source, army, type, originR: r, originC: c };
             e.dataTransfer.setData('text/plain', JSON.stringify(data));
             e.dataTransfer.effectAllowed = 'move';
         }
+
         // 2. Permitir soltar (El navegador bloquea por defecto, hay que prevenirlo)
         // Función auxiliar para limpiar fantasmas previos
         function clearGhosts() {
@@ -564,21 +591,31 @@
                 const target = logicBoard[r][c];
                 const type = draggingMeta.type;
                 const army = draggingMeta.army;
+                const source = draggingMeta.source; // <--- Usamos el dato nuevo
 
-                // 1. RESTRICCIONES DE TERRENO (Agua, Montaña, Fortaleza)
-                // Nota: Asumimos que la Fortaleza es un obstáculo (según tu indicación)
+                // 1. RESTRICCIONES DE TERRENO GENERALES
                 if (terrain[r][c] === 'water') isValid = false;
                 if (target && target.type === 'fortaleza') isValid = false;
                 if (target && target.type === 'montana') isValid = false;
 
-                // 2. RESTRICCIONES DE OCUPACIÓN
-                if (target && isValid) {
-                    // Si hay una unidad...
-                    if (target.army === army) {
-                        // Es ALIADO: Solo válido si soy LANCERO (Intercambio)
-                        if (type !== 'lancero') isValid = false;
+                // 2. LOGICA DIFERENCIADA: ¿REFUERZO O MOVIMIENTO?
+                if (source === 'reserve') {
+                    // --- REFUERZO ---
+                    // A. Debe ser en el anillo de mi fortaleza
+                    const fOrigin = fortressPos[army];
+                    if (!isInExitZone(r, c, fOrigin)) isValid = false;
+
+                    // B. La casilla debe estar VACÍA (no puedes reforzar encima de nadie)
+                    if (target !== null) isValid = false;
+
+                } else {
+                    // --- MOVIMIENTO NORMAL ---
+                    if (target && isValid) {
+                        if (target.army === army) {
+                            if (type !== 'lancero') isValid = false;
+                        }
+                        // Enemigo = Captura (Válido)
                     }
-                    // Si es ENEMIGO: Siempre válido (Captura) - Incluido Elefante por ahora
                 }
 
                 // Pintar
@@ -586,7 +623,7 @@
                 const tile = document.querySelector(`.tile[data-r="${r}"][data-c="${c}"]`);
                 if (tile) tile.classList.add(className);
 
-                return; // ¡IMPORTANTE! Salimos aquí para no ejecutar reglas de despliegue
+                return;
             }
 
             // FASE DE DESPLIEGUE DE TROPAS
@@ -682,191 +719,197 @@
             //  FASE 1: MODO JUEGO (SANDBOX / BATALLA)
             // ============================================================
             if (gameState === 'playing') {
-                // Validar origen (Solo permitir movimientos tablero -> tablero)
-                if (data.source !== 'board') {
-                    showNotification("⛔ En batalla no puedes sacar piezas de la reserva.");
-                    return;
+
+                // --- A. GESTIÓN DE REFUERZOS (DEL INVENTARIO AL TABLERO) ---
+                if (data.source === 'reserve') {
+                    const fOrigin = fortressPos[data.army];
+
+                    // 1. Validar que es zona de salida (Anillo)
+                    if (!isInExitZone(r, c, fOrigin)) {
+                        showNotification("⛔ Los refuerzos solo pueden entrar junto a tu Fortaleza."); return;
+                    }
+
+                    // 2. Validar que está vacía y no es agua/montaña
+                    if (terrain[r][c] === 'water') { showNotification("⛔ No puedes desplegar en el agua."); return; }
+                    if (logicBoard[r][c] !== null) { showNotification("⛔ La zona de despliegue está ocupada."); return; }
+
+                    // 3. Ejecutar Refuerzo
+                    if (reserves[data.army][data.type] > 0) {
+                        reserves[data.army][data.type]--;
+                        logicBoard[r][c] = { army: data.army, type: data.type };
+                        showNotification(`🆕 Refuerzos: ${data.type.toUpperCase()} entra en batalla.`);
+                    } else {
+                        return; // No quedan tropas (seguridad)
+                    }
                 }
 
-                const target = logicBoard[r][c];
+                // --- B. GESTIÓN DE MOVIMIENTO (TABLERO A TABLERO) ---
+                else {
+                    const target = logicBoard[r][c];
 
-                // A. VALIDACIÓN DE TERRENO
-                if (terrain[r][c] === 'water') { showNotification("⛔ No puedes moverte al agua."); return; }
-                if (target && target.type === 'montana') { showNotification("⛔ No puedes atravesar montañas."); return; }
-                if (target && target.type === 'fortaleza') { showNotification("⛔ No puedes ocupar una fortaleza."); return; }
+                    // Validaciones de terreno
+                    if (terrain[r][c] === 'water') { showNotification("⛔ No puedes moverte al agua."); return; }
+                    if (target && target.type === 'montana') { showNotification("⛔ No puedes atravesar montañas."); return; }
+                    if (target && target.type === 'fortaleza') { showNotification("⛔ No puedes ocupar una fortaleza."); return; }
 
-                // B. LÓGICA DE OCUPACIÓN
-                if (target) {
-                    if (target.army === data.army) {
-                        // --- CASO ALIADO ---
-                        if (data.type === 'lancero') {
-                            // INTERCAMBIO (SWAP)
-                            const originPiece = logicBoard[data.originR][data.originC]; // Copia de seguridad
-                            logicBoard[data.originR][data.originC] = target; // El aliado va al origen
-                            logicBoard[r][c] = { army: data.army, type: data.type }; // Lancero al destino
-                            showNotification("🔄 ¡Maniobra de Lancero!");
+                    if (target) {
+                        if (target.army === data.army) {
+                            // --- ALIADO (LANCERO) ---
+                            if (data.type === 'lancero') {
+                                logicBoard[data.originR][data.originC] = target;
+                                logicBoard[r][c] = { army: data.army, type: data.type };
+                                showNotification("🔄 ¡Maniobra de Lancero!");
+                            } else {
+                                showNotification("⛔ Casilla ocupada por aliado."); return;
+                            }
                         } else {
-                            showNotification("⛔ Casilla ocupada por aliado.");
-                            return;
+                            // --- ENEMIGO (CAPTURA) ---
+
+                            // *** REGLA DE VICTORIA: CAPTURA DEL REY ***
+                            if (target.type === 'rey') {
+                                // 1. Detenemos el estado del juego
+                                gameState = 'game-over';
+
+                                // 2. Ejecutamos visualmente la captura (el Rey desaparece)
+                                logicBoard[data.originR][data.originC] = null;
+                                logicBoard[r][c] = { army: data.army, type: data.type };
+
+                                // 3. Actualizamos todo
+                                renderBoard(); // Al repintar, el drag se bloqueará solo porque gameState es 'game-over'
+                                updateInventories();
+                                updateDungeons();
+
+                                // 4. NOTIFICACIÓN DE VICTORIA (Sin Alertas)
+                                const winner = data.army === 'rojo' ? 'ROJO' : 'NEGRO';
+                                const bar = document.getElementById('status-bar');
+                                bar.innerText = `👑 ¡JAQUE MATE! VICTORIA DEL EJÉRCITO ${winner}`;
+                                bar.style.color = '#2ecc71'; // Verde esmeralda para la victoria
+                                bar.style.fontWeight = 'bold';
+
+                                return; // Salimos definitivamente
+                            }
+
+                            // Captura normal
+                            dungeons[data.army].push({ type: target.type, army: target.army });
+                            logicBoard[data.originR][data.originC] = null;
+                            logicBoard[r][c] = { army: data.army, type: data.type };
+                            showNotification("⚔️ ¡CAPTURA! Prisionero a la mazmorra.");
                         }
                     } else {
-                        // --- CASO ENEMIGO (CAPTURA) ---
-                        logicBoard[data.originR][data.originC] = null; // Borrar origen
-                        logicBoard[r][c] = { army: data.army, type: data.type }; // Ocupar destino
-                        showNotification("⚔️ ¡CAPTURA REALIZADA!");
+                        // --- VACÍO ---
+                        logicBoard[data.originR][data.originC] = null;
+                        logicBoard[r][c] = { army: data.army, type: data.type };
                     }
-                } else {
-                    // --- CASO CASILLA VACÍA (MOVIMIENTO NORMAL) ---
-                    logicBoard[data.originR][data.originC] = null;
-                    logicBoard[r][c] = { army: data.army, type: data.type };
                 }
 
-                // C. CAMBIO DE TURNO
+                // C. CAMBIO DE TURNO (Común para refuerzos y movimientos)
                 turnColor = (turnColor === 'rojo') ? 'negro' : 'rojo';
                 showNotification(`Turno de ${turnColor.toUpperCase()}`);
 
                 renderBoard();
                 updateInventories();
-                return; // FINALIZA AQUÍ SI ESTAMOS JUGANDO
+                updateDungeons();
+                return;
             }
 
+
             // ============================================================
-            //  FASE 2: MODO DESPLIEGUE (SETUP)
+            //  FASE 2: MODO DESPLIEGUE (SETUP) - (Código sin cambios lógicos)
             // ============================================================
 
             const isFortress = (data.type === 'fortaleza');
             const isMountain = (data.type === 'montana');
-
-            // Buscar Fortaleza existente
             const fOrigin = fortressPos[data.army];
             const hasFortress = fOrigin !== null;
 
-            // --- A. VALIDACIONES DE REGLAS ---
+            // Validaciones
+            if (!isFortress && !hasFortress) { showNotification("🚫 Primero debes construir la FORTALEZA", true); return; }
 
-            // 1. REGLA FORTALEZA PRIMERO (Sin excepciones)
-            if (!isFortress && !hasFortress) {
-                showNotification("🚫 Primero debes construir la FORTALEZA", true);
-                return;
-            }
-
-            // 2. REGLA DE TERRITORIO (ANTI-SONAR)
             if (p1Territory) {
                 const currentZone = getTerritory(r);
                 const myZone = (data.army === p1Color) ? p1Territory : (p1Territory === 'north' ? 'south' : 'north');
-
-                if (currentZone !== myZone) {
-                    showNotification("🚫 Zona Prohibida: No puedes desplegar aquí.", true);
-                    return;
-                }
+                if (currentZone !== myZone) { showNotification("🚫 Zona Prohibida.", true); return; }
             }
 
-            // 3. REGLA DEL ANILLO DE SALIDA (Unidades normales)
             if (!isFortress && !isMountain && hasFortress) {
-                if (!isInExitZone(r, c, fOrigin)) {
-                    showNotification("🛡️ Las tropas deben desplegarse junto a la Fortaleza", true);
-                    return;
-                }
+                if (!isInExitZone(r, c, fOrigin)) { showNotification("🛡️ Despliega junto a la Fortaleza", true); return; }
             }
 
-            // --- B. DEFINIR CELDAS A OCUPAR (cellsToCheck) ---
+            // Definir celdas
             let cellsToCheck = [];
             if (isFortress) {
-                if (r + 1 > 9 || c + 1 > 9) {
-                    showNotification("¡No cabe aquí!", true);
-                    return;
-                }
-                cellsToCheck.push({ r: r, c: c });
-                cellsToCheck.push({ r: r, c: c + 1 });
-                cellsToCheck.push({ r: r + 1, c: c });
-                cellsToCheck.push({ r: r + 1, c: c + 1 });
-
-                // Regla de márgenes de fortaleza
-                const invalidRows = [0, 4, 5, 9];
-                const invalidCols = [0, 9];
-                if (invalidRows.includes(r) || invalidRows.includes(r + 1) ||
-                    invalidCols.includes(c) || invalidCols.includes(c + 1)) {
-                    showNotification("🏰 Posición inválida (Bordes o Centro prohibidos)", true);
-                    return;
+                if (r + 1 > 9 || c + 1 > 9) { showNotification("¡No cabe aquí!", true); return; }
+                cellsToCheck.push({ r: r, c: c }, { r: r, c: c + 1 }, { r: r + 1, c: c }, { r: r + 1, c: c + 1 });
+                const invalidRows = [0, 4, 5, 9]; const invalidCols = [0, 9];
+                if (invalidRows.includes(r) || invalidRows.includes(r + 1) || invalidCols.includes(c) || invalidCols.includes(c + 1)) {
+                    showNotification("🏰 Posición inválida", true); return;
                 }
             } else {
                 cellsToCheck.push({ r: r, c: c });
             }
 
-            // --- C. CHEQUEO FINAL DE TERRENO Y OCUPACIÓN ---
             for (let cell of cellsToCheck) {
-                if (terrain[cell.r][cell.c] === 'water' && !isFortress) {
-                    showNotification("🌊 ¡Al agua no!", true); return;
-                }
-                if (logicBoard[cell.r][cell.c] !== null) {
-                    showNotification("⛔ Casilla ocupada", true); return;
-                }
+                if (terrain[cell.r][cell.c] === 'water' && !isFortress) { showNotification("🌊 ¡Al agua no!", true); return; }
+                if (logicBoard[cell.r][cell.c] !== null) { showNotification("⛔ Casilla ocupada", true); return; }
             }
 
-            // --- D. EJECUCIÓN (ESCRIBIR EN MEMORIA) ---
-
-            // CASO 1: VIENE DE LA RESERVA
+            // Ejecución
             if (data.source === 'reserve') {
-
-                // Inicialización del juego (Primera Fortaleza)
                 if (gameState === 'init') {
-                    if (!isFortress) {
-                        showNotification("⚠️ Primero la FORTALEZA.", true); return;
-                    }
-                    // Definir bandos
+                    if (!isFortress) { showNotification("⚠️ Primero la FORTALEZA.", true); return; }
                     p1Color = data.army;
                     p2Color = (p1Color === 'rojo') ? 'negro' : 'rojo';
                     p1Territory = getTerritory(r);
                     gameState = 'deploy-p1';
-                    // Nota: No retornamos, dejamos que siga para que escriba la pieza
                 }
+                if (gameState === 'deploy-p1' && data.army !== p1Color) { showNotification("⚠️ Turno del JUGADOR 1", true); return; }
+                if (gameState === 'deploy-p2' && data.army !== p2Color) { showNotification("⚠️ Turno del JUGADOR 2", true); return; }
 
-                // Validar turno de despliegue
-                if (gameState === 'deploy-p1' && data.army !== p1Color) {
-                    showNotification("⚠️ Turno del JUGADOR 1", true); return;
-                }
-                if (gameState === 'deploy-p2' && data.army !== p2Color) {
-                    showNotification("⚠️ Turno del JUGADOR 2", true); return;
-                }
-
-                // Colocar pieza (Si hay stock)
                 if (reserves[data.army][data.type] > 0) {
                     reserves[data.army][data.type]--;
+                    cellsToCheck.forEach(cell => logicBoard[cell.r][cell.c] = { army: data.army, type: data.type });
 
-                    // AQUÍ ES DONDE SE ESCRIBE EN EL TABLERO
-                    cellsToCheck.forEach(cell => {
-                        logicBoard[cell.r][cell.c] = { army: data.army, type: data.type };
-                    });
-
-                    // Guardar posición de fortaleza si corresponde
                     if (isFortress) {
                         fortressPos[data.army] = { r: r, c: c };
-                        // Notificación específica según si es J1 o J2
                         if (gameState === 'deploy-p1') showNotification(`J1: ${p1Color.toUpperCase()} controla el ${p1Territory.toUpperCase()}.`);
                         else showNotification("🏰 Fortaleza establecida.");
                     } else {
                         showNotification(`Desplegado: ${data.type.toUpperCase()}`);
                     }
                 }
-            }
-            // CASO 2: MOVER DENTRO DEL TABLERO (Modo Dios/Despliegue)
-            else if (data.source === 'board') {
-                // Limpiar origen
-                logicBoard[data.originR][data.originC] = null; // Ojo: si movemos fortaleza grande habría que limpiar 4, pero en despliegue asumimos 1x1 salvo fortaleza.
-                // Nota: Mover la fortaleza en despliegue es complejo porque ocupa 4. 
-                // Para simplificar, si mueves la fortaleza en modo despliegue, habría que limpiar las 4 celdas viejas.
-                // Por ahora, asumimos movimiento simple. Si esto da error, avísame.
-
-                cellsToCheck.forEach(cell => {
-                    logicBoard[cell.r][cell.c] = { army: data.army, type: data.type };
-                });
-
+            } else if (data.source === 'board') {
+                // En despliegue, mover fortaleza es "Modo Dios" (asumimos limpieza simple 1x1 para evitar bugs visuales complejos ahora)
+                logicBoard[data.originR][data.originC] = null;
+                cellsToCheck.forEach(cell => logicBoard[cell.r][cell.c] = { army: data.army, type: data.type });
                 if (isFortress) fortressPos[data.army] = { r: r, c: c };
                 showNotification("Unidad reubicada");
             }
 
             renderBoard();
             updateInventories();
+            // No llamamos a updateDungeons aquí porque en despliegue no hay capturas
         }
+
+        // Dibuja los prisioneros en las mazmorras (usando IDs grave-rojo y grave-negro)
+        function updateDungeons() {
+            ['rojo', 'negro'].forEach(army => {
+                // OJO: En tu HTML los IDs son 'grave-rojo' y 'grave-negro'
+                const container = document.getElementById(`grave-${army}`);
+                if (!container) return;
+
+                container.innerHTML = ''; // Limpiar
+
+                dungeons[army].forEach(captive => {
+                    const img = document.createElement('img');
+                    // Usamos el bando original del prisionero para la imagen
+                    img.src = getImgUrl(captive.army, captive.type);
+                    img.title = `Prisionero: ${captive.type.toUpperCase()}`;
+                    container.appendChild(img);
+                });
+            });
+        }
+
+
         function finishTurnP1() {
             // Acción directa, sin preguntas
             gameState = 'deploy-p2';
@@ -878,6 +921,7 @@
             renderBoard();
             updateInventories();
         }
+
 
         function finishTurnP2() {
             // Acción directa
@@ -892,12 +936,14 @@
             updateInventories();
         }
 
-        // Función para obtener el texto por defecto según el estado del juego
         function getStatusText() {
+            // Si el juego acabó, el mensaje es sagrado.
+            if (gameState === 'game-over') return document.getElementById('status-bar').innerText;
+
             if (gameState === 'init') return "Elige tu destino: Arrastra una Fortaleza para empezar.";
             if (gameState === 'deploy-p1') return `Fase Despliegue: JUGADOR 1 (${p1Color.toUpperCase()})`;
             if (gameState === 'deploy-p2') return `Fase Despliegue: JUGADOR 2 (${p2Color.toUpperCase()})`;
-            if (gameState === 'playing') return `¡Batalla en curso! Turno de ${p1Color.toUpperCase()}`; // Asumimos que empieza J1
+            if (gameState === 'playing') return `¡Batalla en curso! Turno de ${turnColor.toUpperCase()}`;
             return "Cotadrez";
         }
 
