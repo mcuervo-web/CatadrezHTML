@@ -2403,9 +2403,9 @@
 
         // Actualiza la barra de estado gestionando prioridades y colores
         function showNotification(msg, isError = false) {
-            // SI HAY EMERGENCIA (Jaque/Asedio), NO mostramos notificaciones triviales
-            if (isCheck || siegeStatus[turnColor] === true || gameState === 'siege-resolution') {
-                // Forzamos actualización para asegurar que se ve la alerta roja
+            // SI HAY EMERGENCIA (Jaque/Asedio), NO mostramos notificaciones triviales.
+            // Forzamos updateStatusBar por si acaso, y salimos.
+            if (isCheck || siegeStatus[turnColor] === true || gameState === 'siege-resolution' || gameState === 'siege-confirmation') {
                 updateStatusBar();
                 return;
             }
@@ -2435,15 +2435,7 @@
         function updateStatusBar() {
             const bar = document.getElementById('status-bar');
 
-            // Si hay una notificación temporal activa (ej: "No puedes mover ahí"), no la tocamos
-            if (isNotificationActive) return;
-
-            // 1. Obtenemos el texto según la jerarquía del Paso 2
-            const text = getStatusText();
-            bar.innerText = text;
-
-            // 2. Determinamos si es una situación CRÍTICA para ponerlo en ROJO/PARPADEANTE
-            // (Jaque, Asedio Resolución, Asedio Confirmación, Alerta de Asedio)
+            // 1. Calculamos PRIMERO si la situación actual es CRÍTICA
             const isCritical = (
                 gameState === 'siege-resolution' ||
                 gameState === 'siege-confirmation' ||
@@ -2452,17 +2444,30 @@
                 isCheck
             );
 
-            // 3. Aplicamos estilos
+            // 2. FILTRO DE PRIORIDAD:
+            // Si hay una notificación temporal activa (ej: "¡Captura!")...
+            // ...SOLO la respetamos si NO estamos en una situación crítica.
+            // Si es crítica (Jaque/Asedio), ignoramos el bloqueo y sobrescribimos el mensaje inmediatamente.
+            if (isNotificationActive && !isCritical) return;
+
+            // 3. Obtenemos el texto según la jerarquía
+            const text = getStatusText();
+            bar.innerText = text;
+
+            // 4. Aplicamos estilos
             if (isCritical) {
                 bar.classList.add('status-critical'); // Clase CSS con animación roja
                 bar.style.color = '#ff2e2e'; // Aseguramos rojo
+
+                // Si acabamos de sobrescribir una notificación temporal, nos aseguramos de que se vea
+                bar.style.opacity = 1;
             } else {
                 bar.classList.remove('status-critical');
-                // Si es bonus de chusma, color especial (Cyan o Dorado), si no, Dorado estándar
+                // Si es bonus de chusma, color especial (Cyan), si no, Dorado estándar
                 if (gameState === 'playing-chusma-bonus') {
-                    bar.style.color = '#3498db'; // Azul claro para diferenciar
+                    bar.style.color = '#3498db';
                 } else {
-                    bar.style.color = 'var(--c-gold)'; // Color normal
+                    bar.style.color = 'var(--c-gold)';
                 }
             }
 
@@ -2741,11 +2746,11 @@
             return attackers;
         }
 
-// Simula un movimiento para ver si deja al Rey en Jaque (Suicidio)
+        // Simula un movimiento para ver si deja al Rey en Jaque (Suicidio)
         function isSimulatedMoveSafe(pieceType, r1, c1, r2, c2, army) {
             // 1. Identificar dónde está el Rey
             let kingR, kingC;
-            
+
             if (pieceType === 'rey') {
                 kingR = r2; kingC = c2;
             } else {
@@ -2758,9 +2763,9 @@
                     }
                 }
             }
-            
+
             // Si no hay rey, no hay jaque (seguro)
-            if (kingR === undefined) return true; 
+            if (kingR === undefined) return true;
 
             // VARIABLES PARA REVERTIR
             // Usamos lógica defensiva por si r2/c2 vinieran mal
@@ -2772,9 +2777,9 @@
                 // 2. APLICAR MOVIMIENTO SIMULADO
                 if (r1 !== null && r1 !== undefined && c1 !== null && c1 !== undefined) {
                     originalSource = logicBoard[r1][c1];
-                    
+
                     // Si la casilla origen está vacía (bug raro), abortamos
-                    if (!originalSource) return true; 
+                    if (!originalSource) return true;
 
                     logicBoard[r1][c1] = null;
                     sourceCleared = true;
