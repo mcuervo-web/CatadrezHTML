@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Cotadrez - Movimiento Chusma</title>
+    <title>Cotadrez - Versión Estable</title>
     <style>
         body { background-color: #1a252f; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         .game-layout { display: flex; gap: 30px; align-items: flex-start; margin-top: 20px; }
@@ -20,7 +20,7 @@
         .inventory-item img { width: 85%; height: 85%; pointer-events: none; }
         .inventory-item.locked { opacity: 0.15; filter: grayscale(1); pointer-events: none; }
         .inventory-item.empty { display: none; }
-        .badge { position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; display: flex; justify-content: center; align-items: center; font-weight: bold; border: 1px solid white; }
+        .badge { position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; display: flex; justify-content: center; align-items: center; font-weight: bold; border: 1px solid white; pointer-events: none; }
         .piece-on-board { width: 90%; height: 90%; transition: opacity 0.3s ease; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); cursor: grab; }
         #status-msg { margin-bottom: 15px; font-size: 1.2em; color: #f1c40f; height: 30px; text-align: center; }
     </style>
@@ -69,7 +69,11 @@ let draggingPieceId = null, draggingArmy = null, draggingOriginTile = null;
 let chusmasMovidasEsteTurno = 0, ultimaChusmaGid = null;
 
 function init() {
-    CONFIG.piezas.forEach(p => { stock.rojo[p.id] = p.cant; stock.negro[p.id] = p.cant; });
+    // Inicializar Stock
+    CONFIG.piezas.forEach(p => { 
+        stock.rojo[p.id] = p.cant; 
+        stock.negro[p.id] = p.cant; 
+    });
     createBoard();
     updateInventories();
 }
@@ -104,12 +108,17 @@ function updateInventories() {
         list.innerHTML = '';
         CONFIG.piezas.forEach(p => {
             const n = stock[army][p.id];
+            if (n <= 0) return;
             const locked = !fortalezaColocada[army] && p.id !== "fortaleza";
             const item = document.createElement('div');
-            item.className = `inventory-item ${n<=0?'empty':''} ${locked?'locked':''}`;
-            item.draggable = n > 0 && !locked;
+            item.className = `inventory-item ${locked?'locked':''}`;
+            item.draggable = !locked;
             item.innerHTML = `<img src="${getUrl(army, p.archivo)}">${n>1?`<span class="badge">${n}</span>`:''}`;
-            item.ondragstart = () => { draggingPieceId = p.id; draggingArmy = army; draggingOriginTile = null; };
+            item.ondragstart = (e) => { 
+                draggingPieceId = p.id; 
+                draggingArmy = army; 
+                draggingOriginTile = null; 
+            };
             list.appendChild(item);
         });
     });
@@ -117,18 +126,18 @@ function updateInventories() {
 
 function handleDragOver(e) {
     e.preventDefault();
+    if (!draggingPieceId) return;
     const r = parseInt(this.dataset.row), c = parseInt(this.dataset.col);
+    const p = CONFIG.piezas.find(x => x.id === draggingPieceId);
+    
     document.querySelectorAll('.tile').forEach(t => t.classList.remove('valid-drop', 'invalid-ghost'));
     
-    let esValido = false;
-    const p = CONFIG.piezas.find(x => x.id === draggingPieceId);
-    if(!p) return;
+    let esValido = true;
 
     if (faseJuego === "despliegue") {
         let minR = !bandoQueEmpezo ? (r < 5 ? 0 : 5) : (mitadesAsignadas[draggingArmy] === 'norte' ? 0 : 5);
         let maxR = !bandoQueEmpezo ? (r < 5 ? 4 : 9) : (mitadesAsignadas[draggingArmy] === 'norte' ? 4 : 9);
         
-        esValido = true;
         for (let i = 0; i < p.size; i++) {
             for (let j = 0; j < p.size; j++) {
                 const tr = r+i, tc = c+j, t = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
@@ -138,16 +147,32 @@ function handleDragOver(e) {
                 else if (p.id !== "fortaleza" && p.id !== "montana" && !zonasDespliegue[draggingArmy].includes(`${tr},${tc}`)) esValido = false;
             }
         }
+        
+        if(esValido) {
+            for (let i = 0; i < p.size; i++) {
+                for (let j = 0; j < p.size; j++) {
+                    const t = document.querySelector(`[data-row="${r+i}"][data-col="${c+j}"]`);
+                    if(t) t.classList.add('valid-drop');
+                }
+            }
+        } else { this.classList.add('invalid-ghost'); }
+
     } else { 
-        // LÓGICA DE MOVIMIENTO CHUSMA EN COMBATE
+        // COMBATE
         if (draggingPieceId === "chusma" && draggingOriginTile) {
             const or = parseInt(draggingOriginTile.dataset.row), oc = parseInt(draggingOriginTile.dataset.col);
             const dist = Math.abs(r - or) + Math.abs(c - oc);
-            if (dist === 1 && !this.classList.contains('water') && this.children.length === 0) esValido = true;
-            if (r === or && c === oc) esValido = true; // Permitir soltar en el mismo sitio para finalizar
-        }
+            const imgDrag = draggingOriginTile.querySelector('img');
+            
+            if (r === or && c === oc) {
+                esValido = true; 
+            } else if (dist === 1 && !this.classList.contains('water') && this.children.length === 0) {
+                if (chusmasMovidasEsteTurno === 1 && imgDrag.dataset.groupId === ultimaChusmaGid) esValido = false;
+                else esValido = true;
+            } else esValido = false;
+        } else esValido = false;
+        this.classList.add(esValido ? 'valid-drop' : 'invalid-ghost');
     }
-    this.classList.add(esValido ? 'valid-drop' : 'invalid-ghost');
 }
 
 function handleDrop(e) {
@@ -166,33 +191,29 @@ function handleDrop(e) {
         for (let i = 0; i < p.size; i++) {
             for (let j = 0; j < p.size; j++) {
                 const t = document.querySelector(`[data-row="${r+i}"][data-col="${c+j}"]`);
-                const img = createPieceImg(draggingArmy, draggingPieceId, gId);
-                t.appendChild(img);
+                t.appendChild(createPieceImg(draggingArmy, draggingPieceId, gId));
             }
         }
         if (draggingPieceId === "fortaleza") { fortalezaColocada[draggingArmy] = true; actualizarZonas(r, c, draggingArmy); }
         stock[draggingArmy][draggingPieceId]--;
         updateInventories();
     } else {
-        // EJECUCIÓN MOVIMIENTO COMBATE
         const img = draggingOriginTile.querySelector('.piece-on-board');
         const gid = img.dataset.groupId;
-        
         if (r === parseInt(draggingOriginTile.dataset.row) && c === parseInt(draggingOriginTile.dataset.col)) {
             if (chusmasMovidasEsteTurno > 0) finalizarTurnoCombate();
             return;
         }
-
         this.appendChild(img);
         if (draggingPieceId === "chusma") {
             chusmasMovidasEsteTurno++;
             ultimaChusmaGid = gid;
-            if (chusmasMovidasEsteTurno >= 2) finalizarTurnoCombate();
-            else document.getElementById('status-msg').innerText = "Medio turno gastado. Mueve otra Chusma o click en la misma para pasar.";
-        } else {
-            finalizarTurnoCombate();
-        }
+            const totalChusmasValidas = document.querySelectorAll(`.piece-on-board[data-army="${turnoActual}"][data-piece-id="chusma"]`).length;
+            if (chusmasMovidasEsteTurno >= 2 || totalChusmasValidas < 2) finalizarTurnoCombate();
+            else document.getElementById('status-msg').innerText = "1/2 Turno: Mueve otra Chusma o suelta la actual para pasar.";
+        } else finalizarTurnoCombate();
     }
+    document.querySelectorAll('.tile').forEach(t => t.classList.remove('valid-drop', 'invalid-ghost'));
 }
 
 function createPieceImg(army, pid, gid) {
@@ -203,10 +224,6 @@ function createPieceImg(army, pid, gid) {
     img.draggable = true;
     img.ondragstart = (e) => {
         if (faseJuego === "combate" && img.dataset.army !== turnoActual) { e.preventDefault(); return; }
-        // Si ya movió una chusma, no puede mover la misma otra vez para avanzar, solo para finalizar
-        if (chusmasMovidasEsteTurno === 1 && img.dataset.groupId === ultimaChusmaGid && faseJuego === "combate") {
-             // Solo permitimos drag si es para soltar en el mismo sitio (finalizar)
-        }
         draggingPieceId = img.dataset.pieceId;
         draggingArmy = img.dataset.army;
         draggingOriginTile = img.parentElement;
@@ -230,16 +247,11 @@ function handleFortressClick(e) {
         const [r, c] = coord.split(',');
         const t = document.querySelector(`[data-row="${r}"][data-col="${c}"]`);
         return t.children.length === 0 && !t.classList.contains('water');
-    })) { alert("Completa el despliegue."); return; }
-
+    })) { alert("Completa el despliegue (montañas y anillo)."); return; }
     document.querySelectorAll(`.piece-on-board[data-army="${army}"]`).forEach(i => i.style.opacity = "0");
     document.querySelectorAll('.tile').forEach(t => t.classList.remove('deploy-zone'));
-    if (army === bandoQueEmpezo) {
-        turnoActual = (army === 'rojo') ? 'negro' : 'rojo';
-    } else {
-        faseJuego = "combate"; turnoActual = bandoQueEmpezo;
-        document.querySelectorAll('.piece-on-board').forEach(i => i.style.opacity = "1");
-    }
+    if (army === bandoQueEmpezo) { turnoActual = (army === 'rojo') ? 'negro' : 'rojo'; }
+    else { faseJuego = "combate"; turnoActual = bandoQueEmpezo; document.querySelectorAll('.piece-on-board').forEach(i => i.style.opacity = "1"); }
     updateInventories();
     document.getElementById('status-msg').innerText = faseJuego === "combate" ? `¡COMBATE! Turno del ${turnoActual.toUpperCase()}` : `Turno: ${turnoActual.toUpperCase()}`;
 }
