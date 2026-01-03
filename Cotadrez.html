@@ -1623,8 +1623,24 @@
                 if (currentZone !== myZone) { showNotification("🚫 Zona Prohibida.", true); return; }
             }
 
+            // BLOQUE MODIFICADO: Retorno a reserva si sale del anillo
             if (!isFortress && !isMountain && hasFortress) {
-                if (!isInExitZone(r, c, fOrigin)) { showNotification("🛡️ Despliega junto a la Fortaleza", true); return; }
+                if (!isInExitZone(r, c, fOrigin)) {
+
+                    // --- NUEVO: SI VIENE DEL TABLERO, LA DEVOLVEMOS A LA RESERVA ---
+                    if (data.source === 'board') {
+                        logicBoard[data.originR][data.originC] = null;
+                        reserves[data.army][data.type]++;
+
+                        showNotification(`↩️ ${data.type.toUpperCase()} devuelta a la reserva.`);
+                        renderBoard();
+                        updateInventories();
+                        return;
+                    }
+                    // ---------------------------------------------------------------
+
+                    showNotification("🛡️ Despliega junto a la Fortaleza", true); return;
+                }
             }
 
             let cellsToCheck = [];
@@ -1714,25 +1730,119 @@
         }
 
         function finishTurnP1() {
+            // 1. NUEVA LÓGICA: Gestión de Fortaleza "solitaria" (Corrección Montañas)
+            const fPos = fortressPos[p1Color];
+            let isRingEmpty = true;
 
+            if (fPos) {
+                // Comprobamos si hay tropas en el anillo
+                for (let r = 0; r < 10; r++) {
+                    for (let c = 0; c < 10; c++) {
+                        if (isInExitZone(r, c, fPos) && logicBoard[r][c] !== null) {
+                            isRingEmpty = false;
+                            break;
+                        }
+                    }
+                    if (!isRingEmpty) break;
+                }
+            }
+
+            if (isRingEmpty) {
+                // --- AQUÍ ESTÁ EL CAMBIO SOLICITADO ---
+                const maxMountains = CONFIG.pieces['montana'].qty; // Generalmente 3
+                const currentMountains = reserves[p1Color]['montana'];
+
+                // ESCENARIO A: No ha puesto montañas (Reserva llena) -> REINICIO TOTAL
+                // Le permitimos cambiar de bando/territorio porque no ha construido nada fijo.
+                if (currentMountains === maxMountains) {
+                    // --- CORRECCIÓN: LIMPIEZA PROFUNDA DE VARIABLES ---
+                    logicBoard = Array(10).fill().map(() => Array(10).fill(null)); // Borrar tablero
+                    fortressPos = { rojo: null, negro: null }; // Olvidar fortalezas
+                    dungeons = { rojo: [], negro: [] }; // Vaciar mazmorras
+                    shotHighlights = []; // Quitar marcas de disparo
+
+                    // Resetear identidades
+                    p1Color = null;
+                    p2Color = null;
+                    p1Territory = null;
+
+                    // Volver al estado inicial real
+                    gameState = 'init';
+
+                    init(); // Ahora sí, llenamos reservas y pintamos el tablero vacío
+                    showNotification("🏰 Reinicio: Fortaleza retirada. Puedes cambiar de bando.");
+                    return;
+                }
+
+                // ESCENARIO B: Ya hay montañas puestas -> REINICIO PARCIAL (Soft Reset)
+                // Solo retiramos la fortaleza, pero mantenemos el bando y las montañas.
+                else {
+                    const r = fPos.r;
+                    const c = fPos.c;
+                    // Limpiamos las 4 celdas del castillo
+                    logicBoard[r][c] = null; logicBoard[r][c + 1] = null;
+                    logicBoard[r + 1][c] = null; logicBoard[r + 1][c + 1] = null;
+
+                    // Devolvemos a reserva
+                    fortressPos[p1Color] = null;
+                    reserves[p1Color]['fortaleza'] = 1;
+
+                    showNotification("↩️ Fortaleza retirada. (Tus montañas se mantienen).");
+                    renderBoard();
+                    updateInventories();
+                    return;
+                }
+            }
+
+            // 2. Condición existente: Verificar si quedan montañas por poner
             if (reserves[p1Color]['montana'] > 0) {
                 showNotification("⚠️ Debes colocar todas las MONTAÑAS en el mapa antes de terminar.", true);
                 return;
             }
 
-            // Acción directa, sin preguntas
+            // 3. Pasar turno
             gameState = 'deploy-p2';
-
-            // Feedback visual en la barra de notificaciones
             showNotification(`✅ Despliegue J1 Finalizado. Turno del JUGADOR 2 (${p2Color.toUpperCase()}).`);
-
-            // Repintar (se aplicará la niebla automáticamente)
             renderBoard();
             updateInventories();
         }
 
 
         function finishTurnP2() {
+            // 1. NUEVA CONDICIÓN: Si el anillo está vacío, devolvemos la fortaleza a la reserva
+            const fPos = fortressPos[p2Color];
+            let isRingEmpty = true;
+            if (fPos) {
+                for (let r = 0; r < 10; r++) {
+                    for (let c = 0; c < 10; c++) {
+                        if (isInExitZone(r, c, fPos) && logicBoard[r][c] !== null) {
+                            isRingEmpty = false;
+                            break;
+                        }
+                    }
+                    if (!isRingEmpty) break;
+                }
+            }
+
+            if (isRingEmpty) {
+                // Retirar Fortaleza del J2 del tablero
+                const r = fPos.r;
+                const c = fPos.c;
+                // Limpiamos las 4 celdas
+                logicBoard[r][c] = null; logicBoard[r][c + 1] = null;
+                logicBoard[r + 1][c] = null; logicBoard[r + 1][c + 1] = null;
+
+                // Resetear variables
+                fortressPos[p2Color] = null;
+                reserves[p2Color]['fortaleza'] = 1;
+
+                showNotification("↩️ Fortaleza retirada. Puedes colocarla de nuevo.");
+                renderBoard();
+                updateInventories();
+                return;
+            }
+
+            // 2. Condición existente: Montañas
             if (reserves[p2Color]['montana'] > 0) {
                 showNotification("⚠️ Debes colocar todas las MONTAÑAS en el mapa antes de empezar.", true);
                 return;
@@ -1750,8 +1860,6 @@
             checkTurnStatus();
 
             // 2. SEGUNDO: Notificamos SOLO si no hay una emergencia
-            // Si checkTurnStatus detectó Jaque, isCheck será true y updateStatusBar ya habrá puesto el mensaje ROJO.
-            // showNotification respetará eso y no lo sobrescribirá.
             if (!isCheck) {
                 showNotification(`¡COMIENZA LA PARTIDA! Turno de ${turnColor.toUpperCase()}`);
             }
@@ -2410,6 +2518,59 @@
             } catch (err) {
                 console.error("Error cálculo Mate:", err);
                 hasMoves = true; // Ante la duda, dejar jugar
+            }
+
+            // Si el Rey parece condenado en el tablero, verificamos "en secreto" 
+            // si la reserva puede salvarle. Si es así, NO declaramos Mate.
+            if (!hasMoves) {
+                const myFort = fortressPos[turnColor];
+
+                // 1. ¿Tenemos alguna tropa en la reserva? (Excluimos Montañas/Fortalezas)
+                let canDeploySomething = false;
+                let samplePiece = null;
+
+                if (myFort) {
+                    for (const [type, count] of Object.entries(reserves[turnColor])) {
+                        if (type !== 'montana' && type !== 'fortaleza' && count > 0) {
+                            canDeploySomething = true;
+                            samplePiece = type; // Usamos el primer tipo disponible para probar
+                            break;
+                        }
+                    }
+                }
+
+                // 2. Si hay tropas, simulamos poner una en el anillo para bloquear
+                if (canDeploySomething) {
+                    // Limitamos la búsqueda al área de la fortaleza para optimizar
+                    const minR = Math.max(0, myFort.r - 1);
+                    const maxR = Math.min(9, myFort.r + 2);
+                    const minC = Math.max(0, myFort.c - 1);
+                    const maxC = Math.min(9, myFort.c + 2);
+
+                    reserveLoop:
+                    for (let r = minR; r <= maxR; r++) {
+                        for (let c = minC; c <= maxC; c++) {
+                            // Solo probamos en casillas válidas de despliegue
+                            if (isInExitZone(r, c, myFort) && logicBoard[r][c] === null && terrain[r][c] !== 'water') {
+
+                                // A. Simular despliegue (Bloqueo físico)
+                                logicBoard[r][c] = { army: turnColor, type: samplePiece };
+
+                                // B. ¿Sigue el Rey amenazado?
+                                // (Al poner un cuerpo sólido, getAttackers detectará si se cortó la visión)
+                                const threats = getAttackers(kingPos.r, kingPos.c, turnColor);
+
+                                // C. Revertir simulación
+                                logicBoard[r][c] = null;
+
+                                if (threats.length === 0) {
+                                    hasMoves = true; // ¡Existe salvación! No decimos cuál, pero el juego sigue.
+                                    break reserveLoop;
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // E. RESOLUCIÓN DE PARTIDA
