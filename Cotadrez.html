@@ -1026,7 +1026,20 @@
                 "⛔ Agua.": "⛔ Agua.",
                 "⛔ Montaña.": "⛔ Montaña.",
                 "⛔ Fortaleza.": "⛔ Fortaleza.",
-                "⚠️ Primero la FORTALEZA.": "⚠️ Primero la FORTALEZA."
+                "⚠️ Primero la FORTALEZA.": "⚠️ Primero la FORTALEZA.",
+                // --- AÑADIR ESTAS CLAVES PARA TERRITORIOS Y COLORES ---
+                "north": "DEL NORTE",
+                "south": "DEL SUR",
+                "rojo": "ROJO",
+                "negro": "NEGRO",
+
+                // Claves compuestas para que autoTranslate las detecte
+                "DE ROJO": "DE ROJO",
+                "DE NEGRO": "DE NEGRO",
+
+                // Fases y Turnos
+                "turn_part": "Turno",
+                "deploy_phase": "Fase Despliegue",
             },
             en: {
                 "north": "NORTH",
@@ -1102,7 +1115,16 @@
                 "⛔ Agua.": "⛔ Water.",
                 "⛔ Montaña.": "⛔ Mountain.",
                 "⛔ Fortaleza.": "⛔ Fortress.",
-                "⚠️ Primero la FORTALEZA.": "⚠️ FORTRESS first."
+                "⚠️ Primero la FORTALEZA.": "⚠️ FORTRESS first.",
+                "north": "NORTH",
+                "south": "SOUTH",
+                "rojo": "RED",
+                "negro": "BLACK",
+                "DE ROJO": "RED",
+                "DE NEGRO": "BLACK",
+
+                "turn_part": "Turn",
+                "deploy_phase": "Deployment Phase",
             }
         };
 
@@ -2291,14 +2313,24 @@
             // 3. Pasar turno
             gameState = 'deploy-p2';
 
-            // --- CAMBIO: Traducir color ---
-            const colorName = t(p2Color).toUpperCase();
+            // CORRECCIÓN: Traducimos color y territorio
+            const colorName = t(p2Color).toUpperCase(); // ROJO -> RED
+            const zoneName = t(p1Territory).toUpperCase(); // north -> DEL NORTE / NORTH
 
             const msg = (currentLang === 'en')
                 ? `✅ P1 Deployment Finished. PLAYER 2 Turn (${colorName}).`
                 : `✅ Despliegue J1 Finalizado. Turno del JUGADOR 2 (${colorName}).`;
 
+            // CORRECCIÓN EXTRA: Mensaje de control de zona
+            // "J1: ROJO controla el DEL NORTE"
+            const ctrlMsg = (currentLang === 'en')
+                ? `P1: ${t(p1Color).toUpperCase()} controls the ${zoneName}.`
+                : `J1: ${t(p1Color).toUpperCase()} controla el ${zoneName}.`;
+
             showNotification(msg);
+            // Opcional: Si quieres mostrar el mensaje de control también, puedes concatenarlo o mostrarlo antes
+            // showNotification(ctrlMsg); 
+
             renderBoard();
             updateInventories();
         }
@@ -2446,43 +2478,50 @@
         }
 
         function getStatusText() {
-            // Traducciones simples de estados fijos
+            // A. Prioridades Absolutas
             if (gameState === 'game-over') return document.getElementById('status-bar').innerText;
-            if (gameState === 'init') return autoTranslate("Elige tu destino: Arrastra una Fortaleza para empezar. Mantén el ratón sobre cualquier unidad para Ayuda Visual");
+            if (gameState === 'init') return autoTranslate(MESSAGES.es.init);
 
-            // Preparamos nombres
+            // B. Preparar nombres traducidos
             const rawArmy = getArmyName(turnColor);
-            // getArmyName devuelve "DEL NORTE", el autoTranslate lo pasará a "NORTH" si hace falta
             const currentArmy = autoTranslate(rawArmy);
+            const isEn = (currentLang === 'en');
 
-            // Estados Especiales (Usamos textos hardcodeados en español para que autoTranslate los pille)
-            if (gameState === 'siege-prisoner-select')
-                return `🔓 ${currentArmy}: ` + (currentLang === 'en' ? "DEFENSE FAILED, SELECT PRISONER!" : "DEFENSA FALLIDA, ¡SELECCIONA UN PRISIONERO!");
-
-            if (gameState === 'siege-confirmation')
-                return `🎯 ${currentArmy}: ` + (currentLang === 'en' ? "SIEGE READY, CLICK FORTRESS!" : "ASEDIO LISTO, PULSA LA FORTALEZA.");
-
-            if (gameState === 'siege-resolution')
-                return `🔥 ${currentArmy}: ` + (currentLang === 'en' ? "SACRIFICE! SAVE ONE UNIT." : "¡SACRIFICIO! DEBE SALVAR UNA PIEZA.");
-
-            if (gameState === 'playing-chusma-bonus')
-                return (currentLang === 'en' ? "⚡ RABBLE BONUS: Move another or click to finish." : "⚡ BONIFICACIÓN CHUSMA: Mueve otra Chusma o haz click en la misma para terminar.");
-
-            // Estados de Alerta
-            if (isCheck)
-                return `⚠️ ${currentLang === 'en' ? "CHECK!" : "¡JAQUE!"} ${currentArmy} ⚠️`;
-
-            if (siegeStatus[turnColor] === true)
-                return `🛡️ ${currentArmy}: ` + (currentLang === 'en' ? "ALERT! FORTRESS SURROUNDED." : "¡ALERTA! FORTALEZA RODEADA.");
-
-            // Estado Estándar
-            if (gameState.includes('deploy')) {
-                const player = (gameState === 'deploy-p1' ? p1Color : p2Color);
-                const pName = player ? player.toUpperCase() : '';
-                return (currentLang === 'en' ? `Deployment Phase: ${pName}` : `Fase Despliegue: ${pName}`);
+            // C. Interacción Forzada
+            if (gameState === 'siege-prisoner-select') {
+                return `🔓 ${currentArmy}: ` + (isEn ? "DEFENSE FAILED, SELECT PRISONER!" : "DEFENSA FALLIDA, ¡SELECCIONA UN PRISIONERO!");
+            }
+            if (gameState === 'siege-confirmation') {
+                return `🎯 ${currentArmy}: ` + (isEn ? "SIEGE READY, CLICK FORTRESS!" : "ASEDIO LISTO, PULSA LA FORTALEZA.");
+            }
+            if (gameState === 'siege-resolution') {
+                return `🔥 ${currentArmy}: ` + (isEn ? "SACRIFICE! SAVE ONE UNIT." : "¡SACRIFICIO! DEBE SALVAR UNA PIEZA.");
             }
 
-            return (currentLang === 'en' ? `Turn ${currentArmy}` : `Turno ${currentArmy}`);
+            // D. Bonus
+            if (gameState === 'playing-chusma-bonus') {
+                return isEn ? "⚡ RABBLE BONUS: Move another or click to finish." : "⚡ BONIFICACIÓN CHUSMA: Mueve otra Chusma o haz click en la misma para terminar.";
+            }
+
+            // E. Alertas
+            if (isCheck) {
+                return `⚠️ ${isEn ? "CHECK!" : "¡JAQUE!"} ${currentArmy} ⚠️`;
+            }
+            if (siegeStatus[turnColor] === true) {
+                return `🛡️ ${currentArmy}: ` + (isEn ? "ALERT! FORTRESS SURROUNDED." : "¡ALERTA! FORTALEZA RODEADA.");
+            }
+
+            // F. Estado Estándar (Fase Despliegue)
+            if (gameState.includes('deploy')) {
+                const player = (gameState === 'deploy-p1' ? p1Color : p2Color);
+                // CORRECCIÓN: Traducimos el color del jugador (ROJO -> RED)
+                const pName = player ? t(player).toUpperCase() : '';
+
+                return isEn ? `Deployment Phase: ${pName}` : `Fase Despliegue: ${pName}`;
+            }
+
+            // Turno Normal
+            return isEn ? `Turn ${currentArmy}` : `Turno ${currentArmy}`;
         }
 
         // Pinta el anillo de salida de la fortaleza del ejército indicado
@@ -3185,12 +3224,17 @@
         function getArmyName(armyColor) {
             if (!armyColor) return "";
 
-            // Si no hay territorios, devolvemos formato genérico traducido
-            if (!p1Territory) return t('of_color', { color: armyColor.toUpperCase() });
+            // 1. Si aún no hay territorios definidos (Inicio de partida)
+            if (!p1Territory) {
+                // Devolvemos la clave compuesta "DE ROJO" o "DE NEGRO"
+                // para que autoTranslate la convierta a "RED" o "BLACK" en inglés.
+                return `DE ${t(armyColor).toUpperCase()}`;
+            }
 
             const isP1 = (armyColor === p1Color);
             const isNorth = isP1 ? (p1Territory === 'north') : (p1Territory === 'south');
 
+            // 2. Usamos t() para obtener "DEL NORTE" o "NORTH" directamente del diccionario
             return isNorth ? t('north') : t('south');
         }
 
