@@ -1391,6 +1391,14 @@
                         showNotification("⛔ Movimiento ilegal"); return;
                     }
 
+                    // --- NUEVO: VALIDACIÓN DE SEGURIDAD (ANTI-SUICIDIO / OBLIGACIÓN DE SALVAR REY) ---
+                    // Antes de mover, simulamos si esto nos deja en Jaque.
+                    if (!isSimulatedMoveSafe(data.type, data.originR, data.originC, r, c, data.army)) {
+                        const msg = isCheck ? "⚠️ ¡ESTÁS EN JAQUE! Debes salvar al Rey." : "⛔ Movimiento inválido: Dejaría al Rey expuesto.";
+                        showNotification(msg, true);
+                        return; // Cancelamos el movimiento
+                    }
+
                     let wasCapture = false;
 
                     if (target) {
@@ -1658,7 +1666,6 @@
 
 
         function finishTurnP2() {
-
             if (reserves[p2Color]['montana'] > 0) {
                 showNotification("⚠️ Debes colocar todas las MONTAÑAS en el mapa antes de empezar.", true);
                 return;
@@ -1668,15 +1675,19 @@
             gameState = 'playing';
             turnColor = p1Color;
 
-            // Feedback visual
-            showNotification(`¡COMIENZA LA PARTIDA! Turno de ${turnColor.toUpperCase()}`);
-
             // Repintar (se quita la niebla)
             renderBoard();
             updateInventories();
 
-            // --- NUEVO: Verificar si empezamos ya en Jaque ---
+            // 1. PRIMERO: Verificamos el estado real (Jaque, Asedios, etc.)
             checkTurnStatus();
+
+            // 2. SEGUNDO: Notificamos SOLO si no hay una emergencia
+            // Si checkTurnStatus detectó Jaque, isCheck será true y updateStatusBar ya habrá puesto el mensaje ROJO.
+            // showNotification respetará eso y no lo sobrescribirá.
+            if (!isCheck) {
+                showNotification(`¡COMIENZA LA PARTIDA! Turno de ${turnColor.toUpperCase()}`);
+            }
         }
 
         function attemptRescue(jailerArmy, captiveIndex, captive) {
@@ -2038,20 +2049,35 @@
             // 1. Crear matriz vacía de ceros
             let map = Array(10).fill().map(() => Array(10).fill(0));
 
-            // 2. Recorrer tablero buscando atacantes
+            // 2. Identificar al Rey Víctima para hacerlo transparente (Fix Dragon X-Ray)
+            // Si ataca el rojo, la víctima es el negro.
+            const victimArmy = (attackingArmy === 'rojo') ? 'negro' : 'rojo';
+            let kingPos = null;
+
+            // Buscamos al Rey
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 10; c++) {
+                    const p = logicBoard[r][c];
+                    if (p && p.type === 'rey' && p.army === victimArmy) {
+                        kingPos = { r, c };
+                        break;
+                    }
+                }
+                if (kingPos) break;
+            }
+
+            // 3. Recorrer tablero buscando atacantes
             for (let r = 0; r < 10; r++) {
                 for (let c = 0; c < 10; c++) {
                     const piece = logicBoard[r][c];
                     if (piece && piece.army === attackingArmy) {
 
-                        // 3. Para cada pieza, verificar qué casillas amenaza
                         for (let tr = 0; tr < 10; tr++) {
                             for (let tc = 0; tc < 10; tc++) {
-                                // No se amenaza a sí mismo
                                 if (r === tr && c === tc) continue;
 
-                                // Usamos la función auxiliar de ataque (no de movimiento)
-                                if (canUnitAttack(piece.type, r, c, tr, tc, piece.army)) {
+                                // Pasamos la posición del rey a ignorar (kingPos)
+                                if (canUnitAttack(piece.type, r, c, tr, tc, piece.army, kingPos)) {
                                     map[tr][tc]++;
                                 }
                             }
@@ -2063,13 +2089,12 @@
         }
 
         // Verifica si una unidad en (r1,c1) podría atacar/capturar en (r2,c2)
-        // Ignoramos qué hay en el destino (asumimos que es el objetivo)
-        function canUnitAttack(type, r1, c1, r2, c2, army) {
+        // ignorePos: {r, c} opcional. Si se pasa, esa casilla se trata como vacía (transparente)
+        function canUnitAttack(type, r1, c1, r2, c2, army, ignorePos = null) {
             const dR = Math.abs(r2 - r1);
             const dC = Math.abs(c2 - c1);
 
             // 1. REY, LANCEROS, CHUSMA (Rango 1)
-            // Nota: Asumimos que atacan igual que mueven
             if (type === 'rey') return (dR <= 1 && dC <= 1);
             if (type === 'lanceros' || type === 'chusma') return (dR + dC === 1);
 
@@ -2079,20 +2104,24 @@
                 if (dR === 1) return true;
                 if (dR === 2) {
                     const midR = (r1 + r2) / 2, midC = (c1 + c2) / 2;
-                    // Solo atacamos si el hueco intermedio está vacío/agua (sin obstáculos sólidos)
-                    // Nota: logicBoard[mid] debe ser null para que la flecha pase
-                    return (logicBoard[midR][midC] === null && terrain[midR][midC] !== 'water');
+
+                    // FIX: Si la casilla intermedia es la ignorada, contamos como vacío
+                    const isMidEmpty = (logicBoard[midR][midC] === null || (ignorePos && midR === ignorePos.r && midC === ignorePos.c));
+
+                    return (isMidEmpty && terrain[midR][midC] !== 'water');
                 }
                 return false;
             }
 
-            // 3. CABALLERÍA LIGERA (Saltos en L diagonal)
+            // 3. CABALLERÍA LIGERA
             if (type === 'c_ligera') {
                 if (!((dR === 3 && dC === 1) || (dR === 1 && dC === 3))) return false;
-                // Reutilizamos lógica de bloqueo de isValidMove (simplificada)
                 const isBlocked = (r, c) => {
                     if (r < 0 || r > 9 || c < 0 || c > 9) return true;
                     if (terrain[r][c] === 'water') return true;
+                    // FIX: Ignorar bloqueo si es la casilla transparente
+                    if (ignorePos && r === ignorePos.r && c === ignorePos.c) return false;
+
                     const o = logicBoard[r][c];
                     return (o && (o.type === 'montana' || o.type === 'fortaleza'));
                 };
@@ -2115,18 +2144,19 @@
                 return false;
             }
 
-            // 4. CABALLERÍA PESADA (Saltos en L ortogonal)
+            // 4. CABALLERÍA PESADA
             if (type === 'c_pesada') {
                 if (!((dR === 2 && dC === 1) || (dR === 1 && dC === 2))) return false;
-                // Bloqueo: Montaña, Fortaleza o ENEMIGO (el amigo deja pasar, el enemigo frena)
-                // Pero para "amenazar" el destino, solo nos importa llegar.
                 const isBlocked = (r, c) => {
                     if (r < 0 || r > 9 || c < 0 || c > 9) return true;
                     if (terrain[r][c] === 'water') return true;
+                    // FIX: Transparencia
+                    if (ignorePos && r === ignorePos.r && c === ignorePos.c) return false;
+
                     const o = logicBoard[r][c];
                     if (o) {
                         if (o.type === 'montana' || o.type === 'fortaleza') return true;
-                        if (o.army !== army) return true; // Enemigo bloquea el paso intermedio
+                        if (o.army !== army) return true;
                     }
                     return false;
                 };
@@ -2137,31 +2167,28 @@
 
             // 5. UNIDADES DE RAYCAST (Dragón, Elefante, Armas)
             const checkRay = (isOrtho, isDiag, canFly, isWeapon) => {
-                // 1. VALIDACIÓN GEOMÉTRICA (Corregida)
                 const validOrtho = (r1 === r2 || c1 === c2);
                 const validDiag = (dR === dC);
 
-                if (isOrtho && isDiag) {
-                    // Caso Dragón (Reina): Vale cualquiera de los dos
-                    if (!validOrtho && !validDiag) return false;
-                } else if (isOrtho) {
-                    // Caso Elefante / Trabuquete: Solo ortogonal
-                    if (!validOrtho) return false;
-                } else if (isDiag) {
-                    // Caso Escorpión: Solo diagonal
-                    if (!validDiag) return false;
-                }
+                if (isOrtho && isDiag) { if (!validOrtho && !validDiag) return false; }
+                else if (isOrtho) { if (!validOrtho) return false; }
+                else if (isDiag) { if (!validDiag) return false; }
 
-                // 2. CÁLCULO DE TRAYECTORIA
                 const sR = Math.sign(r2 - r1);
                 const sC = Math.sign(c2 - c1);
                 let cR = r1 + sR, cC = c1 + sC;
-
                 let enemiesInPath = 0;
                 let lastEnemyPos = null;
 
                 while (cR !== r2 || cC !== c2) {
-                    // ... (El resto del bucle while se queda IGUAL que lo tenías) ...
+
+                    // --- FIX X-RAY: Transparencia ---
+                    if (ignorePos && cR === ignorePos.r && cC === ignorePos.c) {
+                        cR += sR; cC += sC;
+                        continue; // Saltamos esta casilla como si estuviera vacía
+                    }
+                    // --------------------------------
+
                     const obs = logicBoard[cR][cC];
 
                     if (canFly) {
@@ -2184,7 +2211,6 @@
                     cR += sR; cC += sC;
                 }
 
-                // ... (Lógica final de Escorpión igual) ...
                 if (type === 'escorpion' && enemiesInPath > 0) {
                     if (enemiesInPath === 1) {
                         const dist = Math.abs(r2 - lastEnemyPos.r);
@@ -2195,12 +2221,10 @@
                 return true;
             };
 
-            if (type === 'dragon') return checkRay(true, true, true, false); // Vuela, Ortho+Diag
-            if (type === 'elefante') return checkRay(true, false, false, false); // Tierra, Ortho
-
-            // -- ARMAS: Solo generan amenaza en su modo de DISPARO --
-            if (type === 'trabuquete') return checkRay(true, false, false, true); // Dispara Ortho
-            if (type === 'escorpion') return checkRay(false, true, false, true); // Dispara Diag
+            if (type === 'dragon') return checkRay(true, true, true, false);
+            if (type === 'elefante') return checkRay(true, false, false, false);
+            if (type === 'trabuquete') return checkRay(true, false, false, true);
+            if (type === 'escorpion') return checkRay(false, true, false, true);
 
             return false;
         }
@@ -2212,8 +2236,7 @@
             const threatMap = getThreatMap(enemy);
             const attackMap = getThreatMap(turnColor);
 
-            // A. DETECCIÓN DE ASEDIO (ESCANEO GLOBAL INDEPENDIENTE)
-            // Reiniciamos el estado
+            // A. DETECCIÓN DE ASEDIO
             siegeStatus.rojo = false;
             siegeStatus.negro = false;
 
@@ -2222,77 +2245,101 @@
                 if (fort) {
                     const attacker = (army === 'rojo') ? 'negro' : 'rojo';
                     let enemiesAtGate = 0;
-
-                    // Escaneamos el anillo de ESTA fortaleza concreta
                     for (let r = 0; r < 10; r++) {
                         for (let c = 0; c < 10; c++) {
                             if (isInExitZone(r, c, fort)) {
                                 const p = logicBoard[r][c];
-                                if (p && p.army === attacker) {
-                                    enemiesAtGate++;
-                                }
+                                if (p && p.army === attacker) enemiesAtGate++;
                             }
                         }
                     }
-                    // Si hay 2+ enemigos, ESTA fortaleza específica está asediada
-                    if (enemiesAtGate >= 2) {
-                        siegeStatus[army] = true;
-                    }
+                    if (enemiesAtGate >= 2) siegeStatus[army] = true;
                 }
             });
 
-            // B. BUSCAR AL REY (Del jugador activo)
+            // B. BUSCAR AL REY
             let kingPos = null;
-            let hasPieces = false;
             for (let r = 0; r < 10; r++) {
                 for (let c = 0; c < 10; c++) {
                     const p = logicBoard[r][c];
-                    if (p && p.army === turnColor) {
-                        hasPieces = true;
-                        if (p.type === 'rey') kingPos = { r, c };
+                    if (p && p.army === turnColor && p.type === 'rey') {
+                        kingPos = { r, c };
+                        break;
                     }
                 }
+                if (kingPos) break;
             }
 
-            if (!kingPos) {
-                isCheck = false;
-                updateStatusBar();
-                return;
-            }
+            if (!kingPos) { isCheck = false; updateStatusBar(); return; }
 
             // 2. DETECCIÓN DE JAQUE
             isCheck = (threatMap[kingPos.r][kingPos.c] > 0);
 
-            // C. ACTUALIZAR INTERFAZ
-            // La prioridad visual se gestiona en updateStatusBar
+            // C. ACTUALIZAR INTERFAZ (Prioridad inmediata)
             updateStatusBar();
 
-            // D. VERIFICAR MOVIMIENTOS LEGALES (MATE / AHOGADO)
+            // D. VERIFICAR SI HAY SALVACIÓN (MATE / AHOGADO)
             currentThreatMap = threatMap;
             currentAttackMap = attackMap;
 
             let hasMoves = false;
 
-            outerLoop:
-            for (let r = 0; r < 10; r++) {
-                for (let c = 0; c < 10; c++) {
-                    const p = logicBoard[r][c];
-                    if (p && p.army === turnColor) {
-                        for (let tr = 0; tr < 10; tr++) {
-                            for (let tc = 0; tc < 10; tc++) {
-                                if (isValidMove(p.type, r, c, tr, tc)) {
-                                    if (terrain[tr][tc] === 'water' && p.type !== 'trabuquete' && p.type !== 'escorpion') continue;
-                                    const target = logicBoard[tr][tc];
-                                    if (target && target.army === turnColor && p.type !== 'lanceros') continue;
-                                    if (target && (target.type === 'montana' || target.type === 'fortaleza')) continue;
+            try {
+                // BUSCAMOS CUALQUIER MOVIMIENTO QUE SALVE AL REY
+                // Recorremos todas nuestras piezas
+                outerLoop:
+                for (let r = 0; r < 10; r++) {
+                    for (let c = 0; c < 10; c++) {
+                        const p = logicBoard[r][c];
+                        if (p && p.army === turnColor) {
 
-                                    hasMoves = true;
-                                    break outerLoop;
+                            // Probamos todos los destinos posibles
+                            for (let tr = 0; tr < 10; tr++) {
+                                for (let tc = 0; tc < 10; tc++) {
+
+                                    // 1. ¿Es un movimiento geométricamente válido?
+                                    if (isValidMove(p.type, r, c, tr, tc)) {
+
+                                        // Filtros básicos de terreno/ocupación
+                                        if (terrain[tr][tc] === 'water' && p.type !== 'trabuquete' && p.type !== 'escorpion') continue;
+                                        const target = logicBoard[tr][tc];
+                                        if (target && target.army === turnColor && p.type !== 'lanceros') continue;
+                                        if (target && (target.type === 'montana' || target.type === 'fortaleza')) continue;
+
+                                        // 2. SIMULACIÓN DE SEGURIDAD (EL JUEZ FINAL)
+                                        // Realizamos el movimiento en el tablero lógico temporalmente
+                                        const originalSource = logicBoard[r][c];
+                                        const originalTarget = logicBoard[tr][tc];
+
+                                        logicBoard[r][c] = null;
+                                        logicBoard[tr][tc] = originalSource;
+
+                                        // RE-CALCULAMOS: ¿Sigue el Rey en jaque en este futuro hipotético?
+                                        // Nota: Si movimos al Rey, su posición ha cambiado a (tr, tc)
+                                        let simKingR = (p.type === 'rey') ? tr : kingPos.r;
+                                        let simKingC = (p.type === 'rey') ? tc : kingPos.c;
+
+                                        // Usamos getAttackers que lee el tablero modificado (con el bloqueo/captura aplicado)
+                                        const threats = getAttackers(simKingR, simKingC, turnColor);
+                                        const isSuicide = (threats.length > 0);
+
+                                        // Deshacemos el movimiento (Revertir)
+                                        logicBoard[r][c] = originalSource;
+                                        logicBoard[tr][tc] = originalTarget;
+
+                                        if (!isSuicide) {
+                                            hasMoves = true;
+                                            break outerLoop; // ¡Encontramos al menos una salida! No es Mate.
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+            } catch (err) {
+                console.error("Error cálculo Mate:", err);
+                hasMoves = true; // Ante la duda, dejar jugar
             }
 
             // E. RESOLUCIÓN DE PARTIDA
@@ -2317,6 +2364,13 @@
 
         // Actualiza la barra de estado gestionando prioridades y colores
         function showNotification(msg, isError = false) {
+            // SI HAY EMERGENCIA (Jaque/Asedio), NO mostramos notificaciones triviales
+            if (isCheck || siegeStatus[turnColor] === true || gameState === 'siege-resolution') {
+                // Forzamos actualización para asegurar que se ve la alerta roja
+                updateStatusBar();
+                return;
+            }
+
             const bar = document.getElementById('status-bar');
 
             // 1. ACTIVAR BLOQUEO DE ESTADO
@@ -2326,11 +2380,9 @@
             bar.classList.remove('status-critical');
             bar.style.color = isError ? '#e74c3c' : '#f1c40f';
 
-            // Animación suave
             bar.style.opacity = 0;
             setTimeout(() => bar.style.opacity = 1, 50);
 
-            // 2. GESTIÓN DEL TEMPORIZADOR (Reiniciar si ya había uno)
             if (notificationTimer) clearTimeout(notificationTimer);
 
             notificationTimer = setTimeout(() => {
@@ -2629,6 +2681,65 @@
                 }
             }
             return threats;
+        }
+
+        // Devuelve una lista con las coordenadas y tipo de los enemigos que atacan (r, c)
+        function getAttackers(targetR, targetC, victimArmy) {
+            const attackers = [];
+            const enemyArmy = (victimArmy === 'rojo') ? 'negro' : 'rojo';
+
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 10; c++) {
+                    const p = logicBoard[r][c];
+                    if (p && p.army === enemyArmy) {
+                        // Check rápido: ¿Esta pieza enemiga amenaza mi casilla?
+                        if (canUnitAttack(p.type, r, c, targetR, targetC, enemyArmy)) {
+                            attackers.push({ r: r, c: c, type: p.type });
+                        }
+                    }
+                }
+            }
+            return attackers;
+        }
+
+        // Simula un movimiento para ver si deja al Rey en Jaque (Suicidio)
+        function isSimulatedMoveSafe(pieceType, r1, c1, r2, c2, army) {
+            // 1. Identificar dónde está el Rey (o dónde estará si es él quien se mueve)
+            let kingR, kingC;
+            if (pieceType === 'rey') {
+                kingR = r2; kingC = c2;
+            } else {
+                // Buscamos al rey en el tablero actual
+                for (let r = 0; r < 10; r++) {
+                    for (let c = 0; c < 10; c++) {
+                        const p = logicBoard[r][c];
+                        if (p && p.type === 'rey' && p.army === army) {
+                            kingR = r; kingC = c; break;
+                        }
+                    }
+                }
+            }
+
+            // Si no hay rey (capturado), no hay seguridad que valga
+            if (kingR === undefined) return true;
+
+            // 2. SIMULACIÓN TEMPORAL
+            const originalSource = logicBoard[r1][c1];
+            const originalTarget = logicBoard[r2][c2];
+
+            logicBoard[r1][c1] = null;
+            logicBoard[r2][c2] = originalSource;
+
+            // 3. VERIFICAR AMENAZAS EN EL FUTURO
+            // Usamos getAttackers que lee el tablero modificado
+            const attackers = getAttackers(kingR, kingC, army);
+            const isSafe = (attackers.length === 0);
+
+            // 4. REVERTIR (¡Vital!)
+            logicBoard[r1][c1] = originalSource;
+            logicBoard[r2][c2] = originalTarget;
+
+            return isSafe;
         }
 
     </script>
