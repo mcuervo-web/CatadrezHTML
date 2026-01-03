@@ -760,6 +760,71 @@
         // Almacena los prisioneros capturados POR cada jugador
         let dungeons = { rojo: [], negro: [] };
 
+        // --- NUEVO: INFORMACIÓN DE UNIDADES (HOVER MULTI-IDIOMA) ---
+        let hoverTimer = null;
+
+        const UNIT_INFO = {
+            'es': {
+                'rey': "👑 REY: Mueve 1 casilla (Ortogonal/Diagonal). Pieza vital.",
+                'chusma': "🏚️ CHUSMA: Mueve 1 (Ortogonal). 'Marcha Forzada': Mueve 2 distintas.",
+                'lanceros': "🔱 LANCERO: Mueve 1 (Ortogonal). 'Relevo': Intercambia con aliado.",
+                'arqueros': "🏹 ARQUERO: Mueve 1 (Diagonal). 'Salto Mortal': Mata saltando 1 casilla.",
+                'c_ligera': "🐴 C. LIGERA: Salto largo (3x1). Salta sobre todas las tropas.",
+                'c_pesada': "🛡️ C. PESADA: Salto corto (2x1). 'Carga': Atraviesa aliados.",
+                'elefante': "🐘 ELEFANTE: Mueve como Torre. 'Piel Dura': Requiere 2 amenazas.",
+                'dragon': "🐉 DRAGÓN: Mueve como Reina. Vuela sobre Montañas y Agua.",
+                'trabuquete': "☄️ TRABUQUETE: Mueve Diagonal. Dispara Recto (Infinito).",
+                'escorpion': "🦂 ESCORPIÓN: Mueve Recto. Dispara Diagonal. 'Perfora' unidades.",
+                'fortaleza': "🏰 FORTALEZA: Tu base. Define el territorio y despliegue.",
+                'montana': "🏔️ MONTAÑA: Obstáculo sólido. Bloquea movimiento y visión."
+            },
+            'en': {
+                'rey': "👑 KING: Moves 1 square (Orthogonal/Diagonal). Vital piece.",
+                'chusma': "🏚️ RABBLE: Moves 1 (Orthogonal). 'Forced March': Move 2 units.",
+                'lanceros': "🔱 LANCER: Moves 1 (Orthogonal). 'Relay': Swap with ally.",
+                'arqueros': "🏹 ARCHER: Moves 1 (Diagonal). 'Jump': Kills by jumping 1 square.",
+                'c_ligera': "🐴 LT. CAVALRY: Long jump (3x1). Jumps over all troops.",
+                'c_pesada': "🛡️ HVY. CAVALRY: Short jump (2x1). 'Charge': Through allies.",
+                'elefante': "🐘 ELEPHANT: Moves like Rook. 'Thick Skin': Needs 2+ threats.",
+                'dragon': "🐉 DRAGON: Moves like Queen. Flies over Mountain and Water.",
+                'trabuquete': "☄️ TREBUCHET: Moves Diagonal. Shoots Straight (Infinite).",
+                'escorpion': "🦂 SCORPION: Moves Straight. Shoots Diagonal. 'Pierces' units.",
+                'fortaleza': "🏰 FORTRESS: Your base. Defines territory and deployment.",
+                'montana': "🏔️ MOUNTAIN: Solid obstacle. Blocks movement and vision."
+            }
+        };
+
+        // Función para mostrar la info tras 1 segundo (DETECTANDO IDIOMA)
+        function handleUnitHover(type) {
+            if (draggingMeta) return;
+
+            if (hoverTimer) clearTimeout(hoverTimer);
+
+            hoverTimer = setTimeout(() => {
+                if (!draggingMeta) {
+                    const bar = document.getElementById('status-bar');
+
+                    // 1. Detectamos el idioma actual (si no existe, usa español por defecto)
+                    const lang = currentLang || 'es';
+
+                    // 2. Buscamos el texto correspondiente
+                    const dict = UNIT_INFO[lang] || UNIT_INFO['es'];
+                    const info = dict[type] || type.toUpperCase();
+
+                    bar.innerText = `ℹ️ ${info}`;
+                    bar.style.color = '#3498db';
+                    bar.classList.remove('status-critical');
+                }
+            }, 1000);
+        }
+
+        function handleUnitLeave() {
+            if (hoverTimer) clearTimeout(hoverTimer);
+            if (!draggingMeta) {
+                updateStatusBar();
+            }
+        }
+
         // Estado del juego: 'init', 'deploy-p1', 'deploy-p2', 'playing'
         let gameState = 'init';
         let p1Color = null;
@@ -896,6 +961,11 @@
                         const img = document.createElement('img');
                         img.src = getImgUrl(piece.army, piece.type);
                         img.className = 'piece';
+
+                        // --- NUEVO: Eventos de Hover ---
+                        img.onmouseenter = () => handleUnitHover(piece.type);
+                        img.onmouseleave = () => handleUnitLeave();
+
 
                         // --- LÓGICA DE PARPADEO DE FORTALEZA ---
                         if (piece.type === 'fortaleza') {
@@ -1057,6 +1127,10 @@
 
                         const img = document.createElement('img');
                         img.src = getImgUrl(army, type);
+
+                        // --- NUEVO: Eventos de Hover en Reserva ---
+                        img.onmouseenter = () => handleUnitHover(type);
+                        img.onmouseleave = () => handleUnitLeave();
 
                         // --- 2. Aplicar propiedades según estado ---
                         if (isActive) {
