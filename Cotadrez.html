@@ -2,41 +2,45 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Cotadrez - Base Dorada Consolidada</title>
+    <title>Cotadrez - Reglas Completas</title>
     <style>
-        body { background-color: #1a252f; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        body { background-color: #1a252f; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; user-select: none; }
         .game-layout { display: flex; gap: 30px; align-items: flex-start; margin-top: 20px; }
-        .inventory-panel { width: 175px; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 15px; border: 2px solid #34495e; min-height: 550px; }
-        .list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .inventory-panel { width: 190px; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 15px; border: 2px solid #34495e; min-height: 580px; }
+        .list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
         #board { display: grid; grid-template-columns: repeat(10, 55px); grid-template-rows: repeat(10, 55px); border: 8px solid #34495e; background: #2c3e50; }
         .tile { width: 55px; height: 55px; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box; }
         .light { background-color: #f0d9b5; }
         .dark { background-color: #b58863; }
         .water { background-color: #3498db !important; }
+        
         .deploy-zone { box-shadow: inset 0 0 0 4px #f1c40f; z-index: 2; }
         .valid-drop { background-color: rgba(46, 204, 113, 0.6) !important; }
         .invalid-ghost { background-color: rgba(231, 76, 60, 0.7) !important; }
-        
         .shot-origin { outline: 4px solid #e67e22; outline-offset: -4px; z-index: 5; }
         .shot-target { outline: 4px solid #c0392b; outline-offset: -4px; z-index: 5; }
-        .safe-escape { outline: 4px solid #2ecc71; outline-offset: -4px; cursor: pointer; background: rgba(46, 204, 113, 0.2) !important; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+        .safe-escape { background-color: rgba(46, 204, 113, 0.5) !important; cursor: pointer; animation: pulse 1s infinite; outline: 2px solid white; }
+        @keyframes pulse { 0% { opacity: 0.7; } 50% { opacity: 1; } 100% { opacity: 0.7; } }
 
         .inventory-item { width: 55px; height: 55px; background: rgba(0,0,0,0.2); border-radius: 8px; position: relative; cursor: grab; display: flex; justify-content: center; align-items: center; }
         .inventory-item img { width: 85%; height: 85%; pointer-events: none; }
-        .inventory-item.locked { opacity: 0.15; filter: grayscale(1); pointer-events: none; }
-        .badge { position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; justify-content: center; align-items: center; border: 1px solid white; }
-        .piece-on-board { width: 90%; height: 90%; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); cursor: grab; transition: opacity 0.3s; position: relative; z-index: 10; }
+        .inventory-item.locked { opacity: 0.2; filter: grayscale(1); pointer-events: none; }
+        .inventory-item.selectable { outline: 3px solid #f1c40f; cursor: pointer; background: rgba(241, 196, 15, 0.2); animation: pulse 1s infinite; }
         
-        #status-msg { margin-bottom: 15px; font-size: 1.1em; color: #f1c40f; height: 65px; text-align: center; font-weight: bold; max-width: 750px; line-height: 1.2; }
-        .graveyard { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 15px; min-height: 60px; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 5px; }
-        .graveyard img { width: 24px; height: 24px; opacity: 0.8; }
+        .badge { position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; justify-content: center; align-items: center; border: 1px solid white; pointer-events: none; }
+        .piece-on-board { width: 90%; height: 90%; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); cursor: grab; position: relative; z-index: 10; transition: opacity 0.3s; }
+        
+        #status-msg { margin-bottom: 15px; font-size: 1.1em; color: #f1c40f; height: 70px; text-align: center; font-weight: bold; max-width: 800px; white-space: pre-wrap; }
+        
+        .graveyard { display: flex; flex-wrap: wrap; gap: 5px; min-height: 60px; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 5px; border: 1px solid #444; }
+        .graveyard img { width: 26px; height: 26px; opacity: 0.7; }
+        .graveyard img.selectable { cursor: pointer; opacity: 1; outline: 2px solid #f1c40f; transform: scale(1.1); }
     </style>
 </head>
 <body>
 
     <h1>COTADREZ</h1>
-    <div id="status-msg">Cargando unidades...</div>
+    <div id="status-msg">Cargando recursos...</div>
 
     <div class="game-layout">
         <div class="inventory-panel" id="inv-rojo">
@@ -53,6 +57,7 @@
     </div>
 
 <script>
+// --- CONFIGURACIÓN ---
 const CONFIG = {
     user: "mcuervo-web", repo: "Cotadrez", branch: "main",
     piezas: [
@@ -72,21 +77,21 @@ const CONFIG = {
 };
 
 const waterCoords = ["1,3", "3,1", "1,6", "3,8", "6,1", "8,3", "6,8", "8,6"];
-let stock = { rojo: {}, negro: {} }, cementerio = { rojo: [], negro: [] };
+let stock = { rojo: {}, negro: {} }, mazmorra = { rojo: [], negro: [] };
 let fortalezaColocada = { rojo: false, negro: false }, zonasAnillo = { rojo: [], negro: [] };
 let mitadesAsignadas = { rojo: null, negro: null }, bandoQueEmpezo = null;
 let turnoActual = null, faseJuego = "despliegue", gameOver = false;
 let draggingPieceId = null, draggingArmy = null, draggingOriginTile = null;
-let chusmasMovidasEsteTurno = 0, ultimaChusmaGid = null;
+let chusmasMovidasEsteTurno = 0, chusmaMovedId = null; // ID único de la pieza movida
 
-// Variables de Asedio
-let sVictim = null, sConqueror = null, sAttackers = [];
+// Variables de Estado de Asedio
+let sVictim = null, sConqueror = null, sAttackers = [], sSavedPiece = null;
 
 function init() {
     CONFIG.piezas.forEach(p => { stock.rojo[p.id] = p.cant; stock.negro[p.id] = p.cant; });
     createBoard();
     updateInventories();
-    document.getElementById('status-msg').innerText = "El primer jugador elige color y mitad";
+    document.getElementById('status-msg').innerText = "FASE DE DESPLIEGUE\nEl primer jugador elige color y posiciona su Fortaleza.";
 }
 
 function getUrl(bando, archivo) {
@@ -113,26 +118,53 @@ function createBoard() {
 
 function updateInventories() {
     ['rojo', 'negro'].forEach(army => {
+        const panel = document.getElementById(`inv-${army}`);
         const list = document.getElementById(`list-${army}`);
         const grave = document.getElementById(`grave-${army}`);
-        document.getElementById(`inv-${army}`).style.visibility = (turnoActual && turnoActual !== army) ? "hidden" : "visible";
+        
+        let visible = false;
+        if (faseJuego === "despliegue") visible = (!bandoQueEmpezo || turnoActual === army);
+        else if (faseJuego === "combate") visible = (turnoActual === army);
+        else if (faseJuego.startsWith("asedio")) {
+            if (faseJuego === "asedio_defensor_elige" && army === sVictim) visible = true;
+            if (faseJuego === "asedio_atacante_rescata" && army === sConqueror) visible = true;
+        }
+        panel.style.visibility = visible ? "visible" : "hidden";
+
         list.innerHTML = '';
         CONFIG.piezas.forEach(p => {
             const n = stock[army][p.id];
             if (n <= 0) return;
             const item = document.createElement('div');
-            const locked = !fortalezaColocada[army] && p.id !== "fortaleza";
+            let locked = true;
+            
+            if (faseJuego === "despliegue") {
+                if (p.id === "fortaleza" && !fortalezaColocada[army]) locked = false;
+                else if (fortalezaColocada[army] && p.id !== "fortaleza") locked = false;
+            } else if (faseJuego === "combate") {
+                locked = false; 
+            } else if (faseJuego === "asedio_defensor_elige" && army === sVictim) {
+                locked = true; 
+                item.classList.add("selectable");
+                item.onclick = () => selectPieceToSave(p.id);
+            }
+
             item.className = `inventory-item ${locked ? 'locked' : ''}`;
-            item.draggable = !locked;
+            if (!locked && !item.classList.contains("selectable")) item.draggable = true;
             item.innerHTML = `<img src="${getUrl(army, p.archivo)}">${n>1?`<span class="badge">${n}</span>`:''}`;
             item.ondragstart = () => { draggingPieceId = p.id; draggingArmy = army; draggingOriginTile = null; };
             list.appendChild(item);
         });
+
         grave.innerHTML = '';
-        cementerio[army].forEach((pid) => {
-            const enemyColor = army === 'rojo' ? 'negro' : 'rojo';
+        mazmorra[army].forEach(pid => {
+            const enemyColor = (army === 'rojo') ? 'negro' : 'rojo';
             const img = document.createElement('img');
             img.src = getUrl(enemyColor, CONFIG.piezas.find(x=>x.id===pid).archivo);
+            if (faseJuego === "asedio_atacante_rescata" && army === sConqueror) {
+                img.classList.add("selectable");
+                img.onclick = () => finalizeSiege(pid);
+            }
             grave.appendChild(img);
         });
     });
@@ -144,38 +176,149 @@ function getPieceAt(r, c) {
     return t ? t.querySelector('.piece-on-board') : null;
 }
 
-function isSquareAttacked(targetR, targetC, attackerArmy, ignoreImg = null) {
-    let attacked = false;
-    document.querySelectorAll('.piece-on-board').forEach(img => {
-        if (img.dataset.army === attackerArmy && img !== ignoreImg && img.style.opacity !== "0") {
-            const or = parseInt(img.parentElement.dataset.row), oc = parseInt(img.parentElement.dataset.col);
-            const dr = Math.abs(targetR - or), dc = Math.abs(targetC - oc);
-            const pid = img.dataset.pieceId;
-            let reaches = false;
+// --- VALIDACIÓN DE MOVIMIENTOS COMPLEXA ---
+function isValidMove(pid, or, oc, r, c, army, targetImg) {
+    const dr = Math.abs(r - or), dc = Math.abs(c - oc);
+    const pData = CONFIG.piezas.find(x => x.id === pid);
+    
+    // Reglas básicas de terreno
+    if (waterCoords.includes(`${r},${c}`) && !pData.vuela && !pData.ignoraAgua) return false;
+    if (targetImg) {
+        if (targetImg.dataset.pieceId === 'fortaleza') return false;
+        if (targetImg.dataset.pieceId === 'montana' && pid !== "dragon") return false; // Dragón no aterriza en montaña
+        if (targetImg.dataset.army === army && pid !== "lanceros") return false; // Solo lancero permuta
+    }
 
-            if (pid === "chusma" || pid === "lanceros" || pid === "rey") reaches = (dr <= 1 && dc <= 1 && dr+dc > 0);
-            else if (pid === "arqueros") reaches = (dr === dc && dr >= 1 && dr <= 2);
-            else if (pid === "c_pesada") reaches = (dr === 2 && dc === 1) || (dr === 1 && dc === 2);
-            else if (pid === "c_ligera") reaches = (dr === 3 && dc === 1) || (dr === 1 && dc === 3);
-            else if (pid === "elefante" || pid === "trabuquete") {
-                if (dr === 0 || dc === 0) {
-                    reaches = true;
-                    const sR = dr === 0 ? 0 : (targetR > or ? 1 : -1), sC = dc === 0 ? 0 : (targetC > oc ? 1 : -1);
-                    let cr = or+sR, cc = oc+sC;
-                    while (cr !== targetR || cc !== targetC) { if (getPieceAt(cr, cc)) { reaches = false; break; } cr += sR; cc += sC; }
+    // Reglas Específicas
+    if (pid === "chusma") {
+        if (dr + dc !== 1) return false;
+        // Restricción: No mover la misma chusma dos veces
+        const draggedImg = document.querySelector(`[data-row="${or}"][data-col="${oc}"] img`);
+        if (chusmasMovidasEsteTurno === 1 && draggedImg.dataset.groupId === chusmaMovedId) return false;
+        return true;
+    }
+    if (pid === "lanceros") return (dr + dc === 1);
+    if (pid === "rey") return (dr <= 1 && dc <= 1);
+    
+    if (pid === "arqueros") {
+        if (dr !== dc) return false; // Solo diagonal
+        if (dr === 1) return true;
+        if (dr === 2) {
+            // Solo si captura y camino libre
+            if (!targetImg) return false; 
+            const midR = (or + r)/2, midC = (oc + c)/2;
+            if (getPieceAt(midR, midC)) return false;
+            return true;
+        }
+        return false;
+    }
+
+    if (pid === "elefante") {
+        if (dr + dc !== 1) return false;
+        // Comprobar inmunidad del objetivo si es elefante (lógica de captura inversa)
+        // Pero aquí validamos MI movimiento. El elefante mueve 1 ortogonal.
+        return true;
+    }
+
+    if (pid === "c_pesada" || pid === "c_ligera") {
+        const L = (pid === "c_pesada") ? [2,1] : [3,1];
+        if (!((dr === L[0] && dc === L[1]) || (dr === L[1] && dc === L[0]))) return false;
+        // Verificar 2 caminos posibles. Si AMBOS bloqueados, return false.
+        // Camino 1: Eje R primero. Camino 2: Eje C primero.
+        let path1Blocked = false, path2Blocked = false;
+        
+        // Función aux para verificar obstáculos en un segmento
+        const checkSegment = (r1, c1, r2, c2) => {
+            const sR = r2===r1 ? 0 : (r2>r1?1:-1), sC = c2===c1 ? 0 : (c2>c1?1:-1);
+            let tr = r1+sR, tc = c1+sC;
+            while(tr!==r2 || tc!==c2) {
+                const obs = getPieceAt(tr, tc);
+                if (waterCoords.includes(`${tr},${tc}`)) return true;
+                if (obs) {
+                    const type = obs.dataset.pieceId;
+                    if (type === 'montana' || type === 'fortaleza') return true;
+                    if (pid === "c_pesada" && obs.dataset.army !== army) return true; // Pesada no salta enemigos
                 }
-            } else if (pid === "dragon") {
-                if (dr === 0 || dc === 0 || dr === dc) {
-                    reaches = true;
-                    const sR = dr === 0 ? 0 : (targetR > or ? 1 : -1), sC = dc === 0 ? 0 : (targetC > oc ? 1 : -1);
-                    let cr = or+sR, cc = oc+sC;
-                    while (cr !== targetR || cc !== targetC) { if (getPieceAt(cr, cc)) { reaches = false; break; } cr += sR; cc += sC; }
-                }
+                tr += sR; tc += sC;
             }
-            if (reaches) attacked = true;
+            // Check corner (pivot)
+            const pivotObs = getPieceAt(r2, c2);
+            if (waterCoords.includes(`${r2},${c2}`)) return true;
+            if (pivotObs && (pivotObs.dataset.pieceId==='montana'||pivotObs.dataset.pieceId==='fortaleza')) return true;
+            if (pid === "c_pesada" && pivotObs && pivotObs.dataset.army !== army) return true;
+            return false;
+        };
+
+        // Definir esquinas
+        // Path A: Mover todo R, luego todo C. Pivote en (r, oc)
+        path1Blocked = checkSegment(or, oc, r, oc) || checkSegment(r, oc, r, c);
+        // Path B: Mover todo C, luego todo R. Pivote en (or, c)
+        path2Blocked = checkSegment(or, oc, or, c) || checkSegment(or, c, r, c);
+
+        return !(path1Blocked && path2Blocked);
+    }
+
+    if (pid === "trabuquete") {
+        // Movimiento: 1 diag
+        if (!targetImg && dr===1 && dc===1) return true; 
+        // Disparo: Ortogonal
+        if (targetImg && targetImg.dataset.army !== army && (dr===0 || dc===0)) {
+            const sR = dr===0?0:(r>or?1:-1), sC = dc===0?0:(c>oc?1:-1);
+            let tr = or+sR, tc = oc+sC;
+            while(tr!==r || tc!==c) {
+                const obs = getPieceAt(tr, tc);
+                if (obs) {
+                    if (obs.dataset.army === army) return false; // No dispara a través de aliados
+                    if (obs.dataset.pieceId === 'montana' || obs.dataset.pieceId === 'fortaleza') return false;
+                }
+                tr+=sR; tc+=sC;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    if (pid === "escorpion") {
+        // Movimiento: 1 orto
+        if (!targetImg && dr+dc===1) return true;
+        // Disparo: Diag
+        if (targetImg && targetImg.dataset.army !== army && dr===dc) {
+            const sR = r>or?1:-1, sC = c>oc?1:-1;
+            let tr = or+sR, tc = oc+sC;
+            while(tr!==r || tc!==c) {
+                const obs = getPieceAt(tr, tc);
+                if (obs) {
+                    // Bloqueo duro: Aliado, Montaña, Fortaleza
+                    if (obs.dataset.army === army || obs.dataset.pieceId==='montana' || obs.dataset.pieceId==='fortaleza') return false;
+                    // Si es enemigo, es pasable PERO cuenta para alineación. (Se valida en drop)
+                }
+                tr+=sR; tc+=sC;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    if (pid === "dragon") {
+        // Reina volante. Solo bloquea límites.
+        if (dr===0 || dc===0 || dr===dc) return true;
+        return false;
+    }
+
+    return false;
+}
+
+// Check para apoyo del Elefante y seguridad del Rey
+function isSquareThreatened(r, c, attackerArmy) {
+    let threatened = false;
+    document.querySelectorAll('.piece-on-board').forEach(img => {
+        if (img.dataset.army === attackerArmy && img.style.opacity !== "0") {
+            const or = parseInt(img.parentElement.dataset.row), oc = parseInt(img.parentElement.dataset.col);
+            // IMPORTANTE: Pasamos targetImg como null porque simulamos si *alcanza* la casilla vacía
+            if (isValidMove(img.dataset.pieceId, or, oc, r, c, attackerArmy, null)) threatened = true;
         }
     });
-    return attacked;
+    return threatened;
 }
 
 function handleDragOver(e) {
@@ -185,16 +328,12 @@ function handleDragOver(e) {
     const p = CONFIG.piezas.find(x => x.id === draggingPieceId);
     document.querySelectorAll('.tile').forEach(t => t.classList.remove('valid-drop', 'invalid-ghost'));
     
-    let esValido = true;
-    const targetImg = getPieceAt(r, c);
-
-    // FIX GHOSTING 2x2: Escaneo de área completa para Fortaleza
-    for (let i = 0; i < p.size; i++) {
-        for (let j = 0; j < p.size; j++) {
-            const tr = r + i, tc = c + j;
-            const t = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
-            if (!t || t.children.length > 0 || (!p.ignoraAgua && waterCoords.includes(`${tr},${tc}`))) esValido = false;
-        }
+    let valid = true;
+    
+    // 1. Ghosting visual
+    for (let i=0; i<p.size; i++) for (let j=0; j<p.size; j++) {
+        const t = document.querySelector(`[data-row="${r+i}"][data-col="${c+j}"]`);
+        if (!t || t.children.length > 0 || (!p.ignoraAgua && waterCoords.includes(`${r+i},${c+j}`))) valid = false;
     }
 
     if (faseJuego === "despliegue") {
@@ -202,73 +341,45 @@ function handleDragOver(e) {
         let maxR = !bandoQueEmpezo ? (r < 5 ? 4 : 9) : (mitadesAsignadas[draggingArmy] === 'norte' ? 4 : 9);
         for (let i = 0; i < p.size; i++) for (let j = 0; j < p.size; j++) {
             const tr = r+i, tc = c+j;
-            if (p.id === "fortaleza" && (tr <= minR || tr >= maxR || tc <= 0 || tc >= 9)) esValido = false;
-            else if (p.id === "montana" && (tr < minR || tr > maxR)) esValido = false;
-            else if (p.id !== "fortaleza" && p.id !== "montana" && !zonasAnillo[draggingArmy]?.includes(`${tr},${tc}`)) esValido = false;
+            if (p.id === "fortaleza" && (tr <= minR || tr >= maxR || tc <= 0 || tc >= 9)) valid = false;
+            else if (p.id === "montana" && (tr < minR || tr > maxR)) valid = false;
+            else if (p.id !== "fortaleza" && p.id !== "montana" && !zonasAnillo[draggingArmy]?.includes(`${tr},${tc}`)) valid = false;
         }
     } else {
+        // COMBATE
         if (!draggingOriginTile) {
-            if (!zonasAnillo[draggingArmy]?.includes(`${r},${c}`)) esValido = false;
+            // Reserva
+            if (!zonasAnillo[draggingArmy]?.includes(`${r},${c}`)) valid = false;
+            if (draggingPieceId === "rey" && isSquareThreatened(r, c, draggingArmy==='rojo'?'negro':'rojo')) valid = false;
         } else {
+            // Movimiento Normal
             const or = parseInt(draggingOriginTile.dataset.row), oc = parseInt(draggingOriginTile.dataset.col);
-            const dr = Math.abs(r - or), dc = Math.abs(c - oc);
-            const dImg = draggingOriginTile.querySelector('img');
+            const target = getPieceAt(r, c);
+            
+            // Check básico de movimiento usando la función maestra
+            if (!isValidMove(draggingPieceId, or, oc, r, c, draggingArmy, target)) valid = false;
 
-            if (r === or && c === oc) { esValido = true; } 
-            else {
-                let landOk = true;
-                if (this.classList.contains('water') || (targetImg && targetImg.dataset.pieceId === 'montana')) landOk = false;
-                if (targetImg) {
-                    if (targetImg.dataset.pieceId === 'fortaleza') landOk = false;
-                    if (targetImg.dataset.army === draggingArmy && draggingPieceId !== "lanceros") landOk = false;
-                    if (targetImg.dataset.pieceId === 'elefante' && targetImg.dataset.army !== draggingArmy) {
-                        if (draggingPieceId !== "dragon" && !isSquareAttacked(r, c, draggingArmy, dImg)) landOk = false;
-                    }
-                }
-                if (draggingPieceId === "rey" && isSquareAttacked(r, c, (draggingArmy==='rojo'?'negro':'rojo'))) landOk = false;
+            // Check Rey suicida
+            if (draggingPieceId === "rey" && isSquareThreatened(r, c, draggingArmy==='rojo'?'negro':'rojo')) valid = false;
 
-                if (landOk) {
-                    // FIX CABALLOS: Obstáculo en el vértice del movimiento en L
-                    if (draggingPieceId === "c_pesada" || draggingPieceId === "c_ligera") {
-                        const s = draggingPieceId === "c_pesada" ? [2,1] : [3,1];
-                        if ((dr === s[0] && dc === s[1]) || (dr === s[1] && dc === s[0])) {
-                            const pivotR = or + (dr > dc ? (r - or) : 0);
-                            const pivotC = oc + (dc > dr ? (c - oc) : 0);
-                            const obs = getPieceAt(pivotR, pivotC);
-                            if (obs && (obs.dataset.pieceId === 'montana' || obs.dataset.pieceId === 'fortaleza')) esValido = false;
-                        } else esValido = false;
-                    } else if (draggingPieceId === "trabuquete" || draggingPieceId === "escorpion") {
-                        const isTr = draggingPieceId === "trabuquete";
-                        if (!targetImg && (isTr ? (dr===1 && dc===1) : (dr+dc===1))) esValido = true;
-                        else if (targetImg && targetImg.dataset.army !== draggingArmy && (isTr ? (dr===0 || dc===0) : (dr===dc))) {
-                            esValido = true;
-                            const sR = dr === 0 ? 0 : (r > or ? 1 : -1), sC = dc === 0 ? 0 : (c > oc ? 1 : -1);
-                            let tr = or+sR, tc = oc+sC;
-                            while (tr !== r || tc !== c) {
-                                const obs = getPieceAt(tr, tc);
-                                if (isTr) { if (obs && (obs.dataset.pieceId==='montana' || obs.dataset.pieceId==='fortaleza')) { esValido = false; break; } }
-                                else { if (obs) { esValido = false; break; } }
-                                tr += sR; tc += sC;
-                            }
-                            if (draggingPieceId === "escorpion" && esValido && targetImg) {
-                                let mP = 0, dist = 0; let tr2 = or+sR, tc2 = oc+sC;
-                                while(tr2 !== r || tc2 !== c) { if(getPieceAt(tr2,tc2)) { mP++; dist = Math.max(Math.abs(r-tr2), Math.abs(c-tc2)); } tr2 += sR; tc2 += sC; }
-                                if(mP > 1 || (mP === 1 && dist > 2)) esValido = false;
-                            }
-                        } else esValido = false;
-                    } else if (dr + dc === 1 || (draggingPieceId === "rey" && dr <= 1 && dc <= 1) || (draggingPieceId === "dragon" && (dr===0||dc===0||dr===dc)) || (draggingPieceId === "elefante" && (dr===0||dc===0)) || (draggingPieceId === "arqueros" && dr===dc && dr<=2)) esValido = true;
-                    else esValido = false;
-                } else esValido = false;
+            // Check Elefante inmunidad (desde el punto de vista del atacante)
+            if (target && target.dataset.pieceId === "elefante" && draggingPieceId !== "dragon") {
+                // Necesita apoyo: ¿Hay OTRA pieza mía amenazando esa casilla?
+                // Simulamos quitar temporalmente la pieza que mueve para ver si hay otra
+                const myImg = draggingOriginTile.querySelector('img');
+                myImg.style.display = 'none';
+                const hasSupport = isSquareThreatened(r, c, draggingArmy);
+                myImg.style.display = 'block';
+                if (!hasSupport) valid = false;
             }
         }
     }
 
-    // APLICAR GHOSTING AL ÁREA SEGÚN SIZE
-    for (let i = 0; i < p.size; i++) {
-        for (let j = 0; j < p.size; j++) {
-            const t = document.querySelector(`[data-row="${r+i}"][data-col="${c+j}"]`);
-            if (t) t.classList.add(esValido ? 'valid-drop' : 'invalid-ghost');
-        }
+    // Pintar
+    const cssClass = valid ? 'valid-drop' : 'invalid-ghost';
+    for (let i=0; i<p.size; i++) for (let j=0; j<p.size; j++) {
+        const t = document.querySelector(`[data-row="${r+i}"][data-col="${c+j}"]`);
+        if (t) t.classList.add(cssClass);
     }
 }
 
@@ -281,7 +392,7 @@ function handleDrop(e) {
     if (faseJuego === "despliegue") {
         const p = CONFIG.piezas.find(x => x.id === draggingPieceId);
         const gId = `g-${Date.now()}`;
-        if (!bandoQueEmpezo && draggingPieceId === "fortaleza") {
+        if (!bandoQueEmpezo && p.id === "fortaleza") {
             bandoQueEmpezo = draggingArmy; turnoActual = draggingArmy;
             mitadesAsignadas[draggingArmy] = (r < 5) ? 'norte' : 'sur';
             mitadesAsignadas[draggingArmy==='rojo'?'negro':'rojo'] = (r < 5) ? 'sur' : 'norte';
@@ -289,7 +400,7 @@ function handleDrop(e) {
         for (let i = 0; i < p.size; i++) for (let j = 0; j < p.size; j++) {
             document.querySelector(`[data-row="${r+i}"][data-col="${c+j}"]`).appendChild(createPieceImg(draggingArmy, draggingPieceId, gId));
         }
-        if (draggingPieceId === "fortaleza") { fortalezaColocada[draggingArmy] = true; actualizarZonas(r, c, draggingArmy); }
+        if (p.id === "fortaleza") { fortalezaColocada[draggingArmy] = true; actualizarAnillo(r, c, draggingArmy); }
         stock[draggingArmy][draggingPieceId]--;
         updateInventories();
     } else {
@@ -299,43 +410,63 @@ function handleDrop(e) {
             finalizarTurnoCombate();
         } else {
             const or = parseInt(draggingOriginTile.dataset.row), oc = parseInt(draggingOriginTile.dataset.col);
-            if (r === or && c === oc) { if (chusmasMovidasEsteTurno > 0) finalizarTurnoCombate(); return; }
+            if (r===or && c===oc) {
+                // Click sobre sí mismo -> Pasar turno chusma
+                if (chusmasMovidasEsteTurno > 0) finalizarTurnoCombate();
+                return;
+            }
 
-            const targetImg = getPieceAt(r, c);
+            const target = getPieceAt(r, c);
             const myImg = draggingOriginTile.querySelector('img');
 
-            if (targetImg && targetImg.dataset.army !== draggingArmy && (draggingPieceId === "trabuquete" || draggingPieceId === "escorpion")) {
-                draggingOriginTile.classList.add('shot-origin');
-                const sR = r === or ? 0 : (r > or ? 1 : -1), sC = c === oc ? 0 : (c > oc ? 1 : -1);
-                let tr = or + sR, tc = oc + sC;
-                while (true) {
-                    const victim = getPieceAt(tr, tc);
-                    if (victim && victim.dataset.army !== draggingArmy) {
-                        // FIX TRABUQUETE: Solo impacta al final
-                        if (draggingPieceId === "escorpion" || (tr === r && tc === c)) {
-                            document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`).classList.add('shot-target');
-                            capturePiece(victim);
-                        }
-                    }
-                    if (tr === r && tc === c) break;
-                    tr += sR; tc += sC;
-                }
-                finalizarTurnoCombate();
-            } else if (targetImg && targetImg.dataset.army === draggingArmy && draggingPieceId === "lanceros") {
-                draggingOriginTile.appendChild(targetImg); this.appendChild(myImg); finalizarTurnoCombate();
-            } else {
-                if (targetImg) capturePiece(targetImg);
+            // Lógica Captura/Movimiento
+            let captura = false;
+            
+            // Permuta Lanceros
+            if (target && target.dataset.army === draggingArmy && draggingPieceId === "lanceros") {
+                draggingOriginTile.appendChild(target);
                 this.appendChild(myImg);
-                if (draggingPieceId === "chusma") {
-                    chusmasMovidasEsteTurno++; ultimaChusmaGid = myImg.dataset.groupId;
-                    if (chusmasMovidasEsteTurno >= 2) finalizarTurnoCombate();
-                } else finalizarTurnoCombate();
+            } 
+            // Disparos
+            else if ((draggingPieceId === "trabuquete" || draggingPieceId === "escorpion") && target && target.dataset.army !== draggingArmy) {
+                draggingOriginTile.classList.add('shot-origin');
+                if (draggingPieceId === "escorpion") {
+                    // Escorpión: Comprobar doble impacto
+                    const sR = r>or?1:-1, sC = c>oc?1:-1;
+                    let tr=or+sR, tc=oc+sC;
+                    let pieces = [];
+                    while(tr!==r || tc!==c) { 
+                        let p = getPieceAt(tr,tc); if(p && p.dataset.army!==draggingArmy) pieces.push(p); 
+                        tr+=sR; tc+=sC; 
+                    }
+                    pieces.push(target); // El objetivo clicado es el último
+                    // Si hay pieza intermedia válida, capturamos ambas
+                    pieces.forEach(p => capturePiece(p));
+                } else {
+                    // Trabuquete: Solo destino
+                    capturePiece(target);
+                }
+                this.classList.add('shot-target');
+            }
+            // Movimiento Normal
+            else {
+                if (target) { capturePiece(target); captura = true; }
+                this.appendChild(myImg);
+            }
+
+            if (draggingPieceId === "chusma" && !captura) {
+                chusmasMovidasEsteTurno++; 
+                chusmaMovedId = myImg.dataset.groupId;
+                if (chusmasMovidasEsteTurno >= 2) finalizarTurnoCombate();
+            } else {
+                finalizarTurnoCombate();
             }
         }
     }
     document.querySelectorAll('.tile').forEach(t => t.classList.remove('valid-drop', 'invalid-ghost'));
 }
 
+// --- SISTEMA DE ASEDIO ---
 function checkSiege() {
     ['rojo', 'negro'].forEach(victim => {
         const attacker = victim === 'rojo' ? 'negro' : 'rojo';
@@ -343,25 +474,25 @@ function checkSiege() {
         zonasAnillo[victim].forEach(coord => {
             const [tr, tc] = coord.split(',');
             const p = getPieceAt(parseInt(tr), parseInt(tc));
-            if (p && p.dataset.army === attacker && !isSquareAttacked(parseInt(tr), parseInt(tc), victim)) attackers.push(p);
+            // Atacante en anillo Y NO amenazado
+            if (p && p.dataset.army === attacker && !isSquareThreatened(parseInt(tr), parseInt(tc), victim)) attackers.push(p);
         });
 
         if (attackers.length >= 2) {
             sVictim = victim; sConqueror = attacker; sAttackers = attackers;
             if (stock[victim].rey > 0) {
-                let safeExits = zonasAnillo[victim].filter(coord => {
-                    const [tr, tc] = coord.split(',');
-                    return !getPieceAt(tr, tc) && !waterCoords.includes(`${tr},${tc}`) && !isSquareAttacked(tr, tc, attacker);
-                });
-                if (safeExits.length === 0) { alert(`¡JAQUE MATE AL CASTILLO ${victim.toUpperCase()}!`); gameOver = true; }
+                let escapes = zonasAnillo[victim].filter(coord => !getPieceAt(coord.split(',')[0], coord.split(',')[1]) && !waterCoords.includes(coord) && !isSquareThreatened(coord.split(',')[0], coord.split(',')[1], attacker));
+                if (escapes.length === 0) { alert(`¡JAQUE MATE A LA FORTALEZA! Rey atrapado.`); gameOver = true; }
                 else {
                     faseJuego = "asedio_rey_escapa";
-                    document.getElementById('status-msg').innerText = `¡ASEDIO! El Rey ${victim.toUpperCase()} debe escapar. Haz clic en una de las casillas verdes.`;
-                    safeExits.forEach(c => document.querySelector(`[data-row="${c.split(',')[0]}"][data-col="${c.split(',')[1]}"]`).classList.add('safe-escape'));
+                    document.getElementById('status-msg').innerText = `ASEDIO: El Rey ${victim} debe escapar. Pulsa una casilla verde.`;
+                    escapes.forEach(c => document.querySelector(`[data-row="${c.split(',')[0]}"][data-col="${c.split(',')[1]}"]`).classList.add('safe-escape'));
                 }
             } else {
-                alert(`¡FORTALEZA ${victim.toUpperCase()} CAPTURADA! Iniciando negociación de rehenes.`);
+                faseJuego = "asedio_defensor_elige";
+                document.getElementById('status-msg').innerText = `ASEDIO: ${victim}, salva una pieza de tu reserva.`;
             }
+            updateInventories();
         }
     });
 }
@@ -369,15 +500,42 @@ function checkSiege() {
 function handleTileClick(e) {
     if (faseJuego === "despliegue") handleFortressClick(e);
     else if (faseJuego === "asedio_rey_escapa" && e.currentTarget.classList.contains('safe-escape')) {
-        const r = e.currentTarget.dataset.row, c = e.currentTarget.dataset.col;
         e.currentTarget.appendChild(createPieceImg(sVictim, 'rey', `g-rey-esc-${Date.now()}`));
         stock[sVictim].rey = 0;
         document.querySelectorAll('.safe-escape').forEach(t => t.classList.remove('safe-escape'));
-        alert("El Rey ha escapado. Las piezas de reserva han sido capturadas.");
-        Object.keys(stock[sVictim]).forEach(pid => { for(let i=0; i<stock[sVictim][pid]; i++) cementerio[sConqueror].push(pid); stock[sVictim][pid]=0; });
-        faseJuego = "combate";
-        finalizarTurnoCombate();
+        faseJuego = "asedio_atacante_rescata";
+        document.getElementById('status-msg').innerText = `${sConqueror}, rescata un prisionero de tu color.`;
+        updateInventories();
     }
+}
+
+function selectPieceToSave(pid) {
+    sSavedPiece = pid; stock[sVictim][pid]--;
+    faseJuego = "asedio_atacante_rescata";
+    document.getElementById('status-msg').innerText = `${sConqueror}, rescata un prisionero de tu color.`;
+    updateInventories();
+}
+
+function finalizeSiege(pid) {
+    // Vaciar reserva defensora (salvo la salvada)
+    Object.keys(stock[sVictim]).forEach(id => { for(let i=0; i<stock[sVictim][id]; i++) cementerio[sConqueror].push(id); stock[sVictim][id]=0; });
+    if (sSavedPiece) stock[sVictim][sSavedPiece]++;
+    
+    // Rescatar pieza
+    const idx = cementerio[sVictim].indexOf(pid);
+    if (idx > -1) {
+        cementerio[sVictim].splice(idx, 1);
+        stock[sConqueror][pid]++;
+    }
+
+    // Retirar atacantes
+    sAttackers.forEach(img => {
+        stock[sConqueror][img.dataset.pieceId]++;
+        document.querySelectorAll(`[data-group-id="${img.dataset.groupId}"]`).forEach(el => el.remove());
+    });
+
+    faseJuego = "combate"; sSavedPiece = null;
+    finalizarTurnoCombate();
 }
 
 function handleFortressClick(e) {
@@ -385,10 +543,7 @@ function handleFortressClick(e) {
     const img = e.currentTarget.querySelector('.piece-on-board');
     if (!img || img.dataset.pieceId !== 'fortaleza' || img.dataset.army !== turnoActual) return;
     const army = img.dataset.army;
-    if (stock[army].montana > 0 || (zonasAnillo[army] && zonasAnillo[army].some(coord => {
-        const [tr, tc] = coord.split(','), t = document.querySelector(`[data-row="${tr}"][data-col="${tc}"]`);
-        return t.children.length === 0 && !t.classList.contains('water');
-    }))) return alert("Completa el despliegue.");
+    if (stock[army].montana > 0 || zonasAnillo[army].some(coord => !getPieceAt(coord.split(',')[0], coord.split(',')[1]) && !waterCoords.includes(coord))) return alert("Despliega todo primero.");
 
     document.querySelectorAll('.tile').forEach(t => t.classList.remove('deploy-zone'));
     if (army === bandoQueEmpezo) {
@@ -416,7 +571,7 @@ function createPieceImg(army, pid, gid) {
 }
 
 function capturePiece(img) {
-    if (img.dataset.pieceId === 'rey') { alert("¡JAQUE MATE! " + draggingArmy.toUpperCase() + " gana."); gameOver = true; }
+    if (img.dataset.pieceId === 'rey') { alert("Victoria: Rey capturado."); gameOver = true; }
     cementerio[draggingArmy].push(img.dataset.pieceId);
     document.querySelectorAll(`[data-group-id="${img.dataset.groupId}"]`).forEach(el => el.remove());
 }
@@ -425,7 +580,7 @@ function finalizarTurnoCombate() {
     if (gameOver) return;
     checkSiege();
     if (faseJuego.startsWith("asedio")) return;
-    chusmasMovidasEsteTurno = 0; ultimaChusmaGid = null;
+    chusmasMovidasEsteTurno = 0; chusmaMovedId = null;
     turnoActual = (turnoActual === 'rojo') ? 'negro' : 'rojo';
     document.getElementById('status-msg').innerText = `Turno del ${turnoActual.toUpperCase()}`;
     updateInventories();
@@ -442,7 +597,7 @@ function handleRemove(e) {
     updateInventories();
 }
 
-function actualizarZonas(r, c, army) {
+function actualizarAnillo(r, c, army) {
     const coords = [];
     for (let i = r - 1; i <= r + 2; i++) for (let j = c - 1; j <= c + 2; j++) {
         if (!(i >= r && i <= r + 1 && j >= c && j <= c + 1) && i >= 0 && i <= 9 && j >= 0 && j < 10) {
