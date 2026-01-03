@@ -973,7 +973,7 @@
                 "msg_valid": "Movimiento Válido",
                 "msg_invalid": "Movimiento Inválido",
                 "check_label": " (JAQUE ⚠️)",
-                "err_check": " (JAQUE ⚠️)", // <--- FALTABA ESTA
+                "err_check": " (JAQUE ⚠️)",
 
                 // Errores y Notas
                 "water": " (AGUA 🌊)",
@@ -1018,9 +1018,9 @@
                 "rescue_empty": "🚁 ¡RESCATE ÉPICO! La fortaleza enemiga estaba vacía.",
                 "siege_end": "🔄 Asedio finalizado. Tus tropas regresan a la RESERVA.",
                 "fort_empty": "📭 Fortaleza vacía. Fin del asedio.",
-                // --- NUEVOS: FIN DE PARTIDA ---
                 "status_win": "👑 VICTORIA DEL EJÉRCITO {army}",
                 "status_draw": "🏁 FIN DE PARTIDA: TABLAS POR REY AHOGADO",
+                "status_gameover": "🏁 FIN DE PARTIDA: {reason}. {winner}",
 
                 // Tooltips y Ayuda
                 "click_siege": "CLICK PARA EJECUTAR EL ASEDIO",
@@ -1028,35 +1028,43 @@
                 "click_rescue": "CLICK PARA RESCATAR Y EJECUTAR ASEDIO",
                 "help_visualizing": "💡 Visualizando {count} movimientos posibles...",
                 "help_blocked": "🚫 {unit}: SIN MOVIMIENTOS POSIBLES (BLOQUEADA)",
+                "occupied_simple": "⛔ Casilla ocupada",
+                "water_error": "🌊 ¡Al agua no!",
+                "water_simple": "⛔ Agua.",
+                "mountain_simple": "⛔ Montaña.",
+                "fortress_simple": "⛔ Fortaleza.",
+                "fortress_first_short": "⚠️ Primero la FORTALEZA.",
+                "no_fit_here": "¡No cabe aquí!",
+                "⛔ Casilla ocupada": "⛔ Casilla ocupada",
+                "🌊 ¡Al agua no!": "🌊 ¡Al agua no!",
+                "⛔ Agua.": "⛔ Agua.",
+                "⛔ Montaña.": "⛔ Montaña.",
+                "⛔ Fortaleza.": "⛔ Fortaleza.",
+                "⚠️ Primero la FORTALEZA.": "⚠️ Primero la FORTALEZA.",
 
-                // Unidades y Colores (Diccionario Inverso)
+                // Unidades y Colores
                 "rey": "REY", "chusma": "CHUSMA", "lanceros": "LANCERO", "arqueros": "ARQUERO",
                 "c_ligera": "C. LIGERA", "c_pesada": "C. PESADA", "elefante": "ELEFANTE",
                 "dragon": "DRAGÓN", "trabuquete": "TRABUQUETE", "escorpion": "ESCORPIÓN",
                 "fortaleza": "FORTALEZA", "montana": "MONTAÑA"
             },
             en: {
-                // Army Names (Formal)
                 "north": "NORTHERN ARMY",
                 "south": "SOUTHERN ARMY",
                 "rojo": "RED",
                 "negro": "BLACK",
-                // Composite keys for game start
                 "DE ROJO": "RED ARMY",
                 "DE NEGRO": "BLACK ARMY",
 
-                // General Text
                 "init": "Choose your destiny: Drag a Fortress to start. Hover for Visual Aid.",
                 "turn_part": "Turn",
                 "deploy_phase": "Deployment Phase",
 
-                // Game Messages
                 "msg_valid": "Valid Move",
                 "msg_invalid": "Invalid Move",
                 "check_label": " (CHECK ⚠️)",
-                "err_check": " (CHECK ⚠️)", // <--- MISSING
+                "err_check": " (CHECK ⚠️)",
 
-                // Errors & Notes
                 "water": " (WATER 🌊)",
                 "fortress": " (FORTRESS 🏰)",
                 "mountain": " (MOUNTAIN 🏔️)",
@@ -1089,7 +1097,6 @@
                 "fort_set": "🏰 Fortress established.",
                 "elephant_fail": "🐘 IMPOSSIBLE! Attack insufficient. Need 2+ units threatening the Elephant.",
 
-                // Game End & Phases
                 "mountains_left": "⚠️ You must place all MOUNTAINS before finishing.",
                 "mountains_start": "⚠️ You must place all MOUNTAINS before starting.",
                 "fort_reset": "🏰 Reset: Fortress removed. You can switch sides.",
@@ -1099,19 +1106,29 @@
                 "rescue_empty": "🚁 EPIC RESCUE! The enemy fortress was empty.",
                 "siege_end": "🔄 Siege ended. Troops return to RESERVE.",
                 "fort_empty": "📭 Fortress empty. Siege over.",
-                // --- NEW: GAME END ---
                 "status_win": "👑 VICTORY FOR {army} ARMY",
                 "status_draw": "🏁 GAME OVER: DRAW (STALEMATE)",
+                "status_gameover": "🏁 GAME OVER: {reason}. {winner}",
 
-                // Tooltips & Help
                 "click_siege": "CLICK TO EXECUTE SIEGE",
                 "click_pass": "CLICK TO PASS TURN",
                 "click_rescue": "CLICK TO RESCUE AND EXECUTE SIEGE",
-                // (CLEANED UP DUPLICATE HERE)
                 "help_visualizing": "💡 Visualizing {count} possible moves...",
                 "help_blocked": "🚫 {unit}: NO MOVES POSSIBLE (BLOCKED)",
+                "occupied_simple": "⛔ Tile occupied",
+                "water_error": "🌊 Not on water!",
+                "water_simple": "⛔ Water.",
+                "mountain_simple": "⛔ Mountain.",
+                "fortress_simple": "⛔ Fortress.",
+                "fortress_first_short": "⚠️ FORTRESS first.",
+                "no_fit_here": "It doesn't fit here!",
+                "⛔ Casilla ocupada": "⛔ Tile occupied",
+                "🌊 ¡Al agua no!": "🌊 Not on water!",
+                "⛔ Agua.": "⛔ Water.",
+                "⛔ Montaña.": "⛔ Mountain.",
+                "⛔ Fortaleza.": "⛔ Fortress.",
+                "⚠️ Primero la FORTALEZA.": "⚠️ FORTRESS first.",
 
-                // Units & Colors (Reverse Dictionary)
                 "rey": "KING", "chusma": "RABBLE", "lanceros": "LANCER", "arqueros": "ARCHER",
                 "c_ligera": "LT. CAVALRY", "c_pesada": "HVY. CAVALRY", "elefante": "ELEPHANT",
                 "dragon": "DRAGON", "trabuquete": "TREBUCHET", "escorpion": "SCORPION",
@@ -1150,12 +1167,10 @@
         function handleUnitHover(type, army, r, c) {
             if (draggingMeta) return;
 
-            // --- CORRECCIÓN: BLOQUEO DE FIN DE PARTIDA ---
-            // Si la partida ha terminado, no mostramos ayuda para no tapar el resultado.
+            // --- PROTECCIÓN FIN DE PARTIDA ---
             if (gameState === 'game-over') return;
-            // --------------------------------------------
 
-            // 1. Timer de Texto (1 segundo) - Info en barra superior
+            // 1. Timer de Texto (1 segundo)
             if (hoverTimer) clearTimeout(hoverTimer);
 
             hoverTimer = setTimeout(() => {
@@ -1171,9 +1186,7 @@
                 }
             }, 1000);
 
-            // 2. Timer de Tablero (3 segundos) - Ayuda visual de casillas
-            // Condición: Estar JUGANDO (no despliegue) y ser TU TURNO.
-            // QUITAMOS el bloqueo "isCritical": Las luces verdes funcionarán aunque estés en Jaque.
+            // 2. Timer de Tablero (3 segundos)
             const isMyPiece = (gameState === 'playing' && army === turnColor);
 
             if (boardHelpTimer) clearTimeout(boardHelpTimer);
@@ -2174,9 +2187,8 @@
                     if (isFortress) {
                         fortressPos[data.army] = { r: r, c: c };
 
-                        // --- CORRECCIÓN DE TRADUCCIÓN ---
+                        // --- TRADUCCIÓN CORRECTA DE ZONA ---
                         if (gameState === 'deploy-p1') {
-                            // Traducimos el color y el territorio antes de usarlos
                             const colorName = t(p1Color).toUpperCase();
                             const zoneName = t(p1Territory).toUpperCase();
 
@@ -2185,9 +2197,8 @@
                                 : `J1: ${colorName} controla el ${zoneName}.`;
                             showNotification(msg);
                         } else {
-                            showNotification(t("fort_set")); // "Fortaleza establecida"
+                            showNotification(t("fort_set"));
                         }
-
                     } else {
                         const unitName = t(data.type).toUpperCase();
 
@@ -3170,26 +3181,15 @@
 
         function finishGame(winnerArmy, reason = "") {
             gameState = 'game-over';
-            const bar = document.getElementById('status-bar');
 
-            let finalText = "";
-            if (winnerArmy) {
-                // --- CORRECCIÓN: Usar traducción para Victoria ---
-                // 1. Traducimos el nombre del ejército ganador
-                const armyName = t(winnerArmy).toUpperCase();
-                // 2. Construimos la frase de victoria
-                const winPhrase = t('status_win', { army: armyName });
+            // Guardamos los datos para usarlos en getStatusText
+            gameOverData = {
+                winner: winnerArmy,
+                reason: reason
+            };
 
-                bar.innerText = `${winPhrase}. (${reason})`;
-            } else {
-                // --- CORRECCIÓN: Usar traducción para Tablas ---
-                bar.innerText = t('status_draw');
-            }
-
-            bar.style.color = winnerArmy ? '#2ecc71' : '#fff';
-            bar.classList.remove('status-critical');
-            bar.style.fontWeight = 'bold';
-            bar.style.opacity = 1;
+            // Forzamos actualización inmediata usando el traductor
+            updateStatusBar();
         }
 
         // Actualiza la barra de estado gestionando prioridades y colores
@@ -3286,10 +3286,9 @@
         function getArmyName(armyColor) {
             if (!armyColor) return "";
 
-            // 1. Si aún no hay territorios definidos (Inicio de partida)
+            // 1. Si aún no hay territorios definidos
             if (!p1Territory) {
-                // CORRECCIÓN: Usamos la clave compuesta para que se traduzca entera.
-                // Ej: "DE ROJO" -> "DEL EJÉRCITO ROJO" (ES) / "RED ARMY" (EN)
+                // Usamos la clave compuesta "DE ROJO" -> "RED ARMY"
                 const key = `DE ${armyColor.toUpperCase()}`;
                 return t(key);
             }
@@ -3297,7 +3296,6 @@
             const isP1 = (armyColor === p1Color);
             const isNorth = isP1 ? (p1Territory === 'north') : (p1Territory === 'south');
 
-            // 2. Devolvemos el nombre del territorio traducido
             return isNorth ? t('north') : t('south');
         }
 
