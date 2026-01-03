@@ -71,7 +71,7 @@
         /* Sección Superior: Reserva (Inventario) */
         .inventory-section {
             flex: 1; /* Ocupa el espacio restante */
-            padding: 10px;
+            padding: 5px;
             overflow-y: auto;
             border-bottom: 1px solid rgba(255,255,255,0.1);
         }
@@ -106,13 +106,38 @@
             align-content: flex-start;
             overflow-y: auto;
         }
-
-        /* Items Genéricos (Estilo visual placeholder) */
+/* Items del Inventario (Sin recuadro, icono grande) */
         .inv-item { 
-            width: 60px; height: 60px; 
-            background: rgba(255,255,255,0.05); 
-            border-radius: 6px; 
-            border: 1px dashed rgba(255,255,255,0.1);
+            width: 70px; height: 70px; 
+            position: relative; 
+            display: flex; justify-content: center; align-items: center;
+            cursor: grab; /* Indicamos que se puede agarrar */
+        }
+        
+        .inv-item img {
+            width: 100%; height: 100%; /* La imagen ocupa todo el hueco */
+            filter: drop-shadow(0 4px 5px rgba(0,0,0,0.5)); /* Sombra para que destaque sobre el fondo */
+            transition: transform 0.1s;
+        }
+
+        .inv-item:active img {
+            transform: scale(0.9); /* Pequeño efecto al hacer clic */
+        }
+
+        /* El contador de unidades (Badge) */
+        .inv-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background-color: var(--c-gold); /* Color dorado para destacar */
+            color: #1a252f;
+            border-radius: 50%;
+            width: 20px; height: 20px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px;
+            font-weight: 800;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            z-index: 20;
         }
         
         /* --- TABLERO --- */
@@ -174,16 +199,42 @@
 
 <script>
     // --- 1. CONFIGURACIÓN Y ESTADO ---
-    // (Igual que antes, pero preparando el terreno)
-    let terrain = Array(10).fill().map(() => Array(10).fill(null));
+    const CONFIG = {
+        repo: "https://cdn.jsdelivr.net/gh/mcuervo-web/Cotadrez@main",
+        // Definición de cantidades y nombres de archivo
+        pieces: {
+            'fortaleza': { qty: 1, file: 'Castillo.svg' }, 
+            'montana': { qty: 3, file: 'Montana.svg' },
+            'rey': { qty: 1, file: 'Rey.svg' }, 
+            'chusma': { qty: 3, file: 'Chusma.svg' }, 
+            'lanceros': { qty: 3, file: 'Lanza.svg' },
+            'arqueros': { qty: 3, file: 'Arco.svg' }, 
+            'c_ligera': { qty: 3, file: 'CaballeriaL.svg' }, 
+            'c_pesada': { qty: 2, file: 'CaballeriaP.svg' },
+            'elefante': { qty: 2, file: 'Elefante.svg' }, 
+            'escorpion': { qty: 1, file: 'Escorpion.svg' }, 
+            'trabuquete': { qty: 1, file: 'Catapulta.svg' },
+            'dragon': { qty: 1, file: 'Dragon.svg' }
+        }
+    };
 
+    let reserves = { rojo: {}, negro: {} };
+    let terrain = Array(10).fill().map(() => Array(10).fill(null));
     // --- 2. INICIALIZACIÓN ---
     function init() {
-        console.log("Iniciando interfaz visual...");
+        console.log("Inicializando sistema...");
+        
+        // 1. Llenar las reservas con las cantidades iniciales
+        for (const [type, data] of Object.entries(CONFIG.pieces)) {
+            reserves.rojo[type] = data.qty;
+            reserves.negro[type] = data.qty;
+        }
+
+        // 2. Inicializar gráficos
         initWater();
         renderBoard();
+        updateInventories(); // <--- NUEVA LLAMADA
     }
-
     function initWater() {
         const waterCoords = [[3,1], [1,3]]; // b4, d2
         waterCoords.forEach(([r,c]) => {
@@ -215,6 +266,47 @@
     // Arrancar
     init();
 
+// Construye la URL de la imagen según el bando y el tipo
+    function getImgUrl(army, type) {
+        const folder = army === 'rojo' ? 'Rojo' : 'Negro';
+        const filename = CONFIG.pieces[type].file;
+        return `${CONFIG.repo}/${folder}/${filename}`;
+    }
+
+// Dibuja las piezas en los paneles laterales
+    function updateInventories() {
+        ['rojo', 'negro'].forEach(army => {
+            const list = document.getElementById(`inv-${army}`);
+            list.innerHTML = ''; // Limpiar lista actual
+
+            for (const [type, data] of Object.entries(CONFIG.pieces)) {
+                const count = reserves[army][type];
+                
+                if (count > 0) {
+                    const item = document.createElement('div');
+                    item.className = 'inv-item';
+                    
+                    // 1. Imagen
+                    const img = document.createElement('img');
+                    img.src = getImgUrl(army, type);
+                    // (El estilo ya lo controla el CSS ahora)
+
+                    item.appendChild(img);
+
+                    // 2. Contador (Solo si hay más de 1 unidad)
+                    if (count > 1) {
+                        const badge = document.createElement('div');
+                        badge.className = 'inv-badge';
+                        badge.innerText = count;
+                        item.appendChild(badge);
+                    }
+
+                    list.appendChild(item);
+                }
+            }
+        });
+    }
+    
 </script>
 </body>
 </html>
